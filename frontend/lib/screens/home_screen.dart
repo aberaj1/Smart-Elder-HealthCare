@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'medicine_reminder_screen.dart';
+import 'doctor_appointment_screen.dart';
+import 'medicine_stock_screen.dart';
+import 'emergency_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -12,7 +15,7 @@ class HomeScreen extends StatelessWidget {
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
       ),
-      body: Padding(
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -50,8 +53,7 @@ class HomeScreen extends StatelessWidget {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) =>
-                              MedicineScreen(),
+                          builder: (context) => const MedicineScreen(),
                         ),
                       );
                     },
@@ -65,11 +67,21 @@ class HomeScreen extends StatelessWidget {
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: dashboardCard(
-                    Icons.calendar_month,
-                    'Doctor',
-                    'Appointment',
-                    Colors.green,
+                  child: GestureDetector(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const DoctorAppointmentScreen(),
+                        ),
+                      );
+                    },
+                    child: dashboardCard(
+                      Icons.calendar_month,
+                      'Doctor',
+                      'Appointment',
+                      Colors.green,
+                    ),
                   ),
                 ),
               ],
@@ -80,20 +92,40 @@ class HomeScreen extends StatelessWidget {
             Row(
               children: [
                 Expanded(
-                  child: dashboardCard(
-                    Icons.inventory_2,
-                    'Medicine',
-                    'Stock',
-                    Colors.orange,
+                  child: GestureDetector(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const MedicineStockScreen(),
+                        ),
+                      );
+                    },
+                    child: dashboardCard(
+                      Icons.inventory_2,
+                      'Medicine',
+                      'Stock',
+                      Colors.orange,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: dashboardCard(
-                    Icons.emergency,
-                    'Emergency',
-                    'SOS',
-                    Colors.red,
+                  child: GestureDetector(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const EmergencyScreen(),
+                        ),
+                      );
+                    },
+                    child: dashboardCard(
+                      Icons.emergency,
+                      'Emergency',
+                      'SOS',
+                      Colors.red,
+                    ),
                   ),
                 ),
               ],

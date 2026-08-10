@@ -25,22 +25,31 @@ class _MedicineScreenState extends State<MedicineScreen> {
   }
 
   void addReminder() {
-    if (medicineController.text.isNotEmpty &&
-        timeController.text.isNotEmpty) {
-      setState(() {
-        medicineName = medicineController.text;
-        medicineTime = timeController.text;
-      });
+    final medicine = medicineController.text.trim();
+    final time = timeController.text.trim();
 
-      medicineController.clear();
-      timeController.clear();
-
+    if (medicine.isEmpty || time.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Medicine reminder added!'),
+          content: Text('Please enter both medicine name and time.'),
         ),
       );
+      return;
     }
+
+    setState(() {
+      medicineName = medicine;
+      medicineTime = time;
+    });
+
+    medicineController.clear();
+    timeController.clear();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Medicine reminder added!'),
+      ),
+    );
   }
 
   @override
