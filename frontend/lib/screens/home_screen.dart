@@ -1,140 +1,205 @@
 import 'package:flutter/material.dart';
-import 'medicine_reminder_screen.dart';
-import 'doctor_appointment_screen.dart';
-import 'medicine_stock_screen.dart';
-import 'emergency_screen.dart';
 
-class HomeScreen extends StatelessWidget {
-  const HomeScreen({super.key});
+// Shared reminder data
+final ValueNotifier<List<Map<String, String>>> reminderNotifier =
+    ValueNotifier<List<Map<String, String>>>([]);
+
+class MedicineScreen extends StatefulWidget {
+  const MedicineScreen({super.key});
+
+  @override
+  State<MedicineScreen> createState() => _MedicineScreenState();
+}
+
+class _MedicineScreenState extends State<MedicineScreen> {
+  final TextEditingController medicineController =
+      TextEditingController();
+
+  final TextEditingController timeController =
+      TextEditingController();
+
+  final List<String> medicineSuggestions = [
+    'Paracetamol Tablet',
+    'Pantoprazole Tablet',
+    'Amoxicillin Tablet',
+    'Aspirin Tablet',
+    'Cetirizine Tablet',
+    'Ibuprofen Tablet',
+    'Metformin Tablet',
+  ];
+
+  @override
+  void dispose() {
+    medicineController.dispose();
+    timeController.dispose();
+    super.dispose();
+  }
+
+  void addReminder() {
+    final medicine = medicineController.text.trim();
+    final time = timeController.text.trim();
+
+    if (medicine.isEmpty || time.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Please enter medicine name and time.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    reminderNotifier.value = [
+      ...reminderNotifier.value,
+      {
+        'medicine': medicine,
+        'time': time,
+      },
+    ];
+
+    medicineController.clear();
+    timeController.clear();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Medicine reminder added successfully!',
+        ),
+      ),
+    );
+  }
+
+  void deleteReminder(int index) {
+    final updatedList = [...reminderNotifier.value];
+    updatedList.removeAt(index);
+
+    reminderNotifier.value = updatedList;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Reminder deleted.'),
+      ),
+    );
+  }
+
+  Future<void> selectTime() async {
+    final TimeOfDay? selectedTime = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.now(),
+    );
+
+    if (selectedTime != null) {
+      setState(() {
+        timeController.text = selectedTime.format(context);
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Smart Elder Healthcare'),
+        title: const Text('Medicine Reminder'),
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
       ),
+
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Hello 👋',
+              'Add Medicine',
               style: TextStyle(
-                fontSize: 28,
+                fontSize: 24,
                 fontWeight: FontWeight.bold,
               ),
             ),
-            const SizedBox(height: 5),
-            const Text(
-              'Welcome to your healthcare dashboard',
-              style: TextStyle(
-                fontSize: 16,
-                color: Colors.grey,
-              ),
+
+            const SizedBox(height: 20),
+
+            Autocomplete<String>(
+              optionsBuilder: (
+                TextEditingValue value,
+              ) {
+                if (value.text.isEmpty) {
+                  return const Iterable<String>.empty();
+                }
+
+                return medicineSuggestions.where(
+                  (medicine) => medicine
+                      .toLowerCase()
+                      .contains(
+                        value.text.toLowerCase(),
+                      ),
+                );
+              },
+
+              onSelected: (String value) {
+                medicineController.text = value;
+              },
+
+              fieldViewBuilder: (
+                context,
+                controller,
+                focusNode,
+                onFieldSubmitted,
+              ) {
+                return TextField(
+                  controller: controller,
+                  focusNode: focusNode,
+
+                  onChanged: (value) {
+                    medicineController.text = value;
+                  },
+
+                  decoration: const InputDecoration(
+                    labelText: 'Medicine Name',
+                    hintText: 'Type medicine name',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(
+                      Icons.medication,
+                    ),
+                  ),
+                );
+              },
             ),
-            const SizedBox(height: 25),
-            const Text(
-              'Quick Access',
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
+
             const SizedBox(height: 15),
 
-            Row(
-              children: [
-                Expanded(
-                  child: GestureDetector(
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const MedicineScreen(),
-                        ),
-                      );
-                    },
-                    child: dashboardCard(
-                      Icons.medication,
-                      'Medicine',
-                      'Reminder',
-                      Colors.blue,
-                    ),
-                  ),
+            TextField(
+              controller: timeController,
+              readOnly: true,
+              onTap: selectTime,
+              decoration: const InputDecoration(
+                labelText: 'Medicine Time',
+                hintText: 'Select time',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(
+                  Icons.access_time,
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: GestureDetector(
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const DoctorAppointmentScreen(),
-                        ),
-                      );
-                    },
-                    child: dashboardCard(
-                      Icons.calendar_month,
-                      'Doctor',
-                      'Appointment',
-                      Colors.green,
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ),
 
-            const SizedBox(height: 12),
+            const SizedBox(height: 20),
 
-            Row(
-              children: [
-                Expanded(
-                  child: GestureDetector(
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const MedicineStockScreen(),
-                        ),
-                      );
-                    },
-                    child: dashboardCard(
-                      Icons.inventory_2,
-                      'Medicine',
-                      'Stock',
-                      Colors.orange,
-                    ),
-                  ),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: addReminder,
+                icon: const Icon(Icons.add),
+                label: const Text(
+                  'Add Reminder',
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: GestureDetector(
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const EmergencyScreen(),
-                        ),
-                      );
-                    },
-                    child: dashboardCard(
-                      Icons.emergency,
-                      'Emergency',
-                      'SOS',
-                      Colors.red,
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ),
 
             const SizedBox(height: 30),
 
             const Text(
-              "Today's Reminder",
+              'My Reminders',
               style: TextStyle(
                 fontSize: 22,
                 fontWeight: FontWeight.bold,
@@ -143,82 +208,87 @@ class HomeScreen extends StatelessWidget {
 
             const SizedBox(height: 15),
 
-            const Card(
-              child: ListTile(
-                leading: Icon(
-                  Icons.alarm,
-                  color: Colors.blue,
-                  size: 35,
-                ),
-                title: Text(
-                  'No reminders yet',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                subtitle: Text(
-                  'Add your medicine schedule',
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: 0,
-        items: [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home),
-            label: 'Home',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.medication),
-            label: 'Medicine',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.calendar_month),
-            label: 'Appointments',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person),
-            label: 'Profile',
-          ),
-        ],
-      ),
-    );
-  }
+            ValueListenableBuilder<
+                List<Map<String, String>>>(
+              valueListenable: reminderNotifier,
 
-  Widget dashboardCard(
-    IconData icon,
-    String title,
-    String subtitle,
-    Color color,
-  ) {
-    return Card(
-      elevation: 3,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            Icon(
-              icon,
-              size: 45,
-              color: color,
-            ),
-            const SizedBox(height: 10),
-            Text(
-              title,
-              style: const TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              subtitle,
-              style: const TextStyle(
-                color: Colors.grey,
-              ),
+              builder: (
+                context,
+                reminders,
+                child,
+              ) {
+                if (reminders.isEmpty) {
+                  return const Card(
+                    child: ListTile(
+                      leading: Icon(
+                        Icons.alarm,
+                        color: Colors.blue,
+                      ),
+                      title: Text(
+                        'No reminders added',
+                      ),
+                      subtitle: Text(
+                        'Add medicine name and time above',
+                      ),
+                    ),
+                  );
+                }
+
+                return ListView.builder(
+                  shrinkWrap: true,
+                  physics:
+                      const NeverScrollableScrollPhysics(),
+                  itemCount: reminders.length,
+
+                  itemBuilder: (
+                    context,
+                    index,
+                  ) {
+                    final reminder =
+                        reminders[index];
+
+                    return Card(
+                      elevation: 3,
+                      margin:
+                          const EdgeInsets.only(
+                        bottom: 12,
+                      ),
+
+                      child: ListTile(
+                        leading: const Icon(
+                          Icons.medication,
+                          color: Colors.blue,
+                          size: 40,
+                        ),
+
+                        title: Text(
+                          reminder['medicine']!,
+                          style: const TextStyle(
+                            fontWeight:
+                                FontWeight.bold,
+                            fontSize: 18,
+                          ),
+                        ),
+
+                        subtitle: Text(
+                          'Time: ${reminder['time']}',
+                        ),
+
+                        trailing: IconButton(
+                          icon: const Icon(
+                            Icons.delete,
+                            color: Colors.red,
+                          ),
+
+                          onPressed: () {
+                            deleteReminder(index);
+                          },
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
             ),
           ],
         ),
