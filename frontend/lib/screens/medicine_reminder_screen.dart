@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+final ValueNotifier<List<Map<String, String>>> reminderNotifier =
+    ValueNotifier<List<Map<String, String>>>([]);
+
 class MedicineScreen extends StatefulWidget {
   const MedicineScreen({super.key});
 
@@ -40,7 +43,9 @@ class _MedicineScreenState extends State<MedicineScreen> {
     if (medicine.isEmpty || time.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please enter medicine name and time.'),
+          content: Text(
+            'Please enter medicine name and time.',
+          ),
         ),
       );
       return;
@@ -51,6 +56,9 @@ class _MedicineScreenState extends State<MedicineScreen> {
         'medicine': medicine,
         'time': time,
       });
+
+      reminderNotifier.value =
+          List<Map<String, String>>.from(reminders);
     });
 
     medicineController.clear();
@@ -58,7 +66,9 @@ class _MedicineScreenState extends State<MedicineScreen> {
 
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('Medicine reminder added successfully!'),
+        content: Text(
+          'Medicine reminder added successfully!',
+        ),
       ),
     );
   }
@@ -66,6 +76,9 @@ class _MedicineScreenState extends State<MedicineScreen> {
   void deleteReminder(int index) {
     setState(() {
       reminders.removeAt(index);
+
+      reminderNotifier.value =
+          List<Map<String, String>>.from(reminders);
     });
 
     ScaffoldMessenger.of(context).showSnackBar(
@@ -76,14 +89,16 @@ class _MedicineScreenState extends State<MedicineScreen> {
   }
 
   Future<void> selectTime() async {
-    final TimeOfDay? selectedTime = await showTimePicker(
+    final TimeOfDay? selectedTime =
+        await showTimePicker(
       context: context,
       initialTime: TimeOfDay.now(),
     );
 
     if (selectedTime != null) {
       setState(() {
-        timeController.text = selectedTime.format(context);
+        timeController.text =
+            selectedTime.format(context);
       });
     }
   }
@@ -92,14 +107,18 @@ class _MedicineScreenState extends State<MedicineScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Medicine Reminder'),
+        title: const Text(
+          'Medicine Reminder',
+        ),
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
       ),
+
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment:
+              CrossAxisAlignment.start,
           children: [
             const Text(
               'Add Medicine',
@@ -112,7 +131,8 @@ class _MedicineScreenState extends State<MedicineScreen> {
             const SizedBox(height: 20),
 
             Autocomplete<String>(
-              optionsBuilder: (TextEditingValue value) {
+              optionsBuilder:
+                  (TextEditingValue value) {
                 if (value.text.isEmpty) {
                   return const Iterable<String>.empty();
                 }
@@ -120,12 +140,16 @@ class _MedicineScreenState extends State<MedicineScreen> {
                 return medicineSuggestions.where(
                   (medicine) => medicine
                       .toLowerCase()
-                      .contains(value.text.toLowerCase()),
+                      .contains(
+                        value.text.toLowerCase(),
+                      ),
                 );
               },
+
               onSelected: (String value) {
                 medicineController.text = value;
               },
+
               fieldViewBuilder: (
                 context,
                 controller,
@@ -135,14 +159,21 @@ class _MedicineScreenState extends State<MedicineScreen> {
                 return TextField(
                   controller: controller,
                   focusNode: focusNode,
+
                   onChanged: (value) {
-                    medicineController.text = value;
+                    medicineController.text =
+                        value;
                   },
-                  decoration: const InputDecoration(
+
+                  decoration:
+                      const InputDecoration(
                     labelText: 'Medicine Name',
-                    hintText: 'Type medicine name',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.medication),
+                    hintText:
+                        'Type medicine name',
+                    border:
+                        OutlineInputBorder(),
+                    prefixIcon:
+                        Icon(Icons.medication),
                   ),
                 );
               },
@@ -154,11 +185,15 @@ class _MedicineScreenState extends State<MedicineScreen> {
               controller: timeController,
               readOnly: true,
               onTap: selectTime,
-              decoration: const InputDecoration(
+
+              decoration:
+                  const InputDecoration(
                 labelText: 'Medicine Time',
                 hintText: 'Select time',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.access_time),
+                border:
+                    OutlineInputBorder(),
+                prefixIcon:
+                    Icon(Icons.access_time),
               ),
             ),
 
@@ -169,7 +204,9 @@ class _MedicineScreenState extends State<MedicineScreen> {
               child: ElevatedButton.icon(
                 onPressed: addReminder,
                 icon: const Icon(Icons.add),
-                label: const Text('Add Reminder'),
+                label: const Text(
+                  'Add Reminder',
+                ),
               ),
             ),
 
@@ -192,7 +229,9 @@ class _MedicineScreenState extends State<MedicineScreen> {
                     Icons.alarm,
                     color: Colors.blue,
                   ),
-                  title: Text('No reminders added'),
+                  title: Text(
+                    'No reminders added',
+                  ),
                   subtitle: Text(
                     'Add medicine name and time above',
                   ),
@@ -201,37 +240,55 @@ class _MedicineScreenState extends State<MedicineScreen> {
             else
               ListView.builder(
                 shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
+                physics:
+                    const NeverScrollableScrollPhysics(),
+
                 itemCount: reminders.length,
-                itemBuilder: (context, index) {
-                  final reminder = reminders[index];
+
+                itemBuilder:
+                    (context, index) {
+                  final reminder =
+                      reminders[index];
 
                   return Card(
                     elevation: 3,
-                    margin: const EdgeInsets.only(bottom: 12),
+                    margin:
+                        const EdgeInsets.only(
+                      bottom: 12,
+                    ),
+
                     child: ListTile(
                       leading: const Icon(
                         Icons.medication,
                         color: Colors.blue,
                         size: 40,
                       ),
+
                       title: Text(
                         reminder['medicine']!,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
+                        style:
+                            const TextStyle(
+                          fontWeight:
+                              FontWeight.bold,
                           fontSize: 18,
                         ),
                       ),
+
                       subtitle: Text(
                         'Time: ${reminder['time']}',
                       ),
-                      trailing: IconButton(
+
+                      trailing:
+                          IconButton(
                         icon: const Icon(
                           Icons.delete,
                           color: Colors.red,
                         ),
+
                         onPressed: () {
-                          deleteReminder(index);
+                          deleteReminder(
+                            index,
+                          );
                         },
                       ),
                     ),

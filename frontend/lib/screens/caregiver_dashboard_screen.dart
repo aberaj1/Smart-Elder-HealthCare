@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 
+import 'doctor_appointment_screen.dart';
+import 'emergency_screen.dart';
 import 'login_screen.dart';
 import 'medicine_reminder_screen.dart';
 import 'medicine_stock_screen.dart';
-import 'doctor_appointment_screen.dart';
-import 'emergency_screen.dart';
 
 class CaregiverDashboardScreen extends StatelessWidget {
   const CaregiverDashboardScreen({super.key});
@@ -41,15 +41,15 @@ class CaregiverDashboardScreen extends StatelessWidget {
             const Text(
               'Hello Caregiver 👋',
               style: TextStyle(
-                fontSize: 28,
+                fontSize: 27,
                 fontWeight: FontWeight.bold,
               ),
             ),
 
-            const SizedBox(height: 5),
+            const SizedBox(height: 6),
 
             const Text(
-              'Monitor your elder healthcare activities',
+              'Monitor your elder\'s healthcare activities',
               style: TextStyle(
                 fontSize: 16,
                 color: Colors.grey,
@@ -72,20 +72,27 @@ class CaregiverDashboardScreen extends StatelessWidget {
               elevation: 3,
               child: ListTile(
                 leading: const CircleAvatar(
+                  radius: 28,
                   backgroundColor: Colors.blue,
                   child: Icon(
-                    Icons.person,
+                    Icons.elderly,
                     color: Colors.white,
+                    size: 32,
                   ),
                 ),
                 title: const Text(
                   'Elder User',
                   style: TextStyle(
+                    fontSize: 18,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
                 subtitle: const Text(
-                  'Healthcare monitoring',
+                  'Healthcare monitoring active',
+                ),
+                trailing: const Icon(
+                  Icons.check_circle,
+                  color: Colors.green,
                 ),
               ),
             ),
@@ -93,7 +100,7 @@ class CaregiverDashboardScreen extends StatelessWidget {
             const SizedBox(height: 25),
 
             const Text(
-              'Quick Access',
+              'Health Monitoring',
               style: TextStyle(
                 fontSize: 22,
                 fontWeight: FontWeight.bold,
@@ -115,11 +122,11 @@ class CaregiverDashboardScreen extends StatelessWidget {
                         ),
                       );
                     },
-                    child: caregiverCard(
-                      Icons.medication,
-                      'Medicine',
-                      'Status',
-                      Colors.blue,
+                    child: _monitorCard(
+                      icon: Icons.medication,
+                      title: 'Medicine',
+                      value: 'View',
+                      color: Colors.blue,
                     ),
                   ),
                 ),
@@ -137,11 +144,11 @@ class CaregiverDashboardScreen extends StatelessWidget {
                         ),
                       );
                     },
-                    child: caregiverCard(
-                      Icons.inventory_2,
-                      'Medicine',
-                      'Stock',
-                      Colors.orange,
+                    child: _monitorCard(
+                      icon: Icons.inventory_2,
+                      title: 'Stock',
+                      value: 'View',
+                      color: Colors.orange,
                     ),
                   ),
                 ),
@@ -163,11 +170,11 @@ class CaregiverDashboardScreen extends StatelessWidget {
                         ),
                       );
                     },
-                    child: caregiverCard(
-                      Icons.calendar_month,
-                      'Doctor',
-                      'Appointments',
-                      Colors.green,
+                    child: _monitorCard(
+                      icon: Icons.calendar_month,
+                      title: 'Appointment',
+                      value: 'View',
+                      color: Colors.green,
                     ),
                   ),
                 ),
@@ -185,11 +192,11 @@ class CaregiverDashboardScreen extends StatelessWidget {
                         ),
                       );
                     },
-                    child: caregiverCard(
-                      Icons.emergency,
-                      'Emergency',
-                      'Alerts',
-                      Colors.red,
+                    child: _monitorCard(
+                      icon: Icons.notifications_active,
+                      title: 'Emergency',
+                      value: 'SOS',
+                      color: Colors.red,
                     ),
                   ),
                 ),
@@ -198,60 +205,168 @@ class CaregiverDashboardScreen extends StatelessWidget {
 
             const SizedBox(height: 30),
 
-            Card(
-              elevation: 3,
-              child: ListTile(
-                leading: const Icon(
-                  Icons.notifications_active,
-                  color: Colors.orange,
-                  size: 35,
-                ),
-                title: const Text(
-                  'No alerts',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
+            const Text(
+              'Medicine Status',
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+
+            const SizedBox(height: 15),
+
+            GestureDetector(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) =>
+                        const MedicineScreen(),
+                  ),
+                );
+              },
+              child: Card(
+                elevation: 3,
+                child: ListTile(
+                  leading: const Icon(
+                    Icons.medication,
+                    color: Colors.blue,
+                    size: 35,
+                  ),
+                  title: const Text(
+                    'Medicine Reminders',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  subtitle: const Text(
+                    'View elder medicine schedule',
+                  ),
+                  trailing: const Icon(
+                    Icons.arrow_forward_ios,
+                    size: 18,
                   ),
                 ),
-                subtitle: const Text(
-                  'Elder healthcare alerts will appear here',
+              ),
+            ),
+
+            const SizedBox(height: 12),
+
+            GestureDetector(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) =>
+                        const MedicineStockScreen(),
+                  ),
+                );
+              },
+              child: Card(
+                elevation: 3,
+                child: ListTile(
+                  leading: const Icon(
+                    Icons.inventory_2,
+                    color: Colors.orange,
+                    size: 35,
+                  ),
+                  title: const Text(
+                    'Medicine Stock',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  subtitle: const Text(
+                    'Check available medicine stock',
+                  ),
+                  trailing: const Icon(
+                    Icons.arrow_forward_ios,
+                    size: 18,
+                  ),
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 12),
+
+            GestureDetector(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) =>
+                        const DoctorAppointmentScreen(),
+                  ),
+                );
+              },
+              child: Card(
+                elevation: 3,
+                child: ListTile(
+                  leading: const Icon(
+                    Icons.calendar_month,
+                    color: Colors.green,
+                    size: 35,
+                  ),
+                  title: const Text(
+                    'Doctor Appointment',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  subtitle: const Text(
+                    'View doctor appointment details',
+                  ),
+                  trailing: const Icon(
+                    Icons.arrow_forward_ios,
+                    size: 18,
+                  ),
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 25),
+
+            SizedBox(
+              width: double.infinity,
+              height: 55,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) =>
+                          const EmergencyScreen(),
+                    ),
+                  );
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  foregroundColor: Colors.white,
+                ),
+                icon: const Icon(Icons.emergency),
+                label: const Text(
+                  'Emergency Alerts',
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ),
 
             const SizedBox(height: 20),
-
-            SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: OutlinedButton.icon(
-                onPressed: () {
-                  Navigator.pushAndRemoveUntil(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const LoginScreen(),
-                    ),
-                    (route) => false,
-                  );
-                },
-                icon: const Icon(Icons.logout),
-                label: const Text(
-                  'Logout',
-                  style: TextStyle(fontSize: 17),
-                ),
-              ),
-            ),
           ],
         ),
       ),
     );
   }
 
-  Widget caregiverCard(
-    IconData icon,
-    String title,
-    String subtitle,
-    Color color,
-  ) {
+  Widget _monitorCard({
+    required IconData icon,
+    required String title,
+    required String value,
+    required Color color,
+  }) {
     return Card(
       elevation: 3,
       child: Padding(
@@ -260,7 +375,7 @@ class CaregiverDashboardScreen extends StatelessWidget {
           children: [
             Icon(
               icon,
-              size: 45,
+              size: 40,
               color: color,
             ),
 
@@ -268,18 +383,21 @@ class CaregiverDashboardScreen extends StatelessWidget {
 
             Text(
               title,
+              textAlign: TextAlign.center,
               style: const TextStyle(
-                fontSize: 17,
+                fontSize: 16,
                 fontWeight: FontWeight.bold,
               ),
             ),
 
-            const SizedBox(height: 4),
+            const SizedBox(height: 5),
 
             Text(
-              subtitle,
-              style: const TextStyle(
-                color: Colors.grey,
+              value,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: color,
+                fontWeight: FontWeight.bold,
               ),
             ),
           ],
