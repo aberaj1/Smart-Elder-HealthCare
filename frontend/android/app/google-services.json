@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "45609505233",
+    "project_id": "smart-elder-healthcare",
+    "storage_bucket": "smart-elder-healthcare.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:45609505233:android:adf8ff118810c75ca7d0f0",
+        "android_client_info": {
+          "package_name": "com.example.frontend"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBX6If4eeBXhC-bTqaDXso5iKiEkY93edE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

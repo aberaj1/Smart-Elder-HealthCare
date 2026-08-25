@@ -1,13 +1,1 @@
-{
-  "firestore": {
-    "database": "(default)",
-    "location": "asia-south1",
-    "rules": "firestore.rules",
-    "indexes": "firestore.indexes.json"
-  },
-  "auth": {
-    "providers": {
-      "emailPassword": true
-    }
-  }
-}
+{"firestore":{"database":"(default)","location":"asia-south1","rules":"firestore.rules","indexes":"firestore.indexes.json"},"auth":{"providers":{"emailPassword":true}},"flutter":{"platforms":{"dart":{"lib/firebase_options.dart":{"projectId":"smart-elder-healthcare","configurations":{"android":"1:45609505233:android:adf8ff118810c75ca7d0f0"}}},"android":{"default":{"projectId":"smart-elder-healthcare","appId":"1:45609505233:android:adf8ff118810c75ca7d0f0","fileOutput":"android/app/google-services.json"}}}}}

@@ -1,5 +1,7 @@
 {
   "projects": {
-    "default": "smart-elder-healthacre"
-  }
+    "default": "smart-elder-healthcare"
+  },
+  "targets": {},
+  "etags": {}
 }
