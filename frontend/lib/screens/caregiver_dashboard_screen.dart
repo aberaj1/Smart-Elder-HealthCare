@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 import 'doctor_appointment_screen.dart';
 import 'emergency_screen.dart';
-import 'login_screen.dart';
 import 'medicine_reminder_screen.dart';
 import 'medicine_stock_screen.dart';
 
@@ -20,14 +20,8 @@ class CaregiverDashboardScreen extends StatelessWidget {
           IconButton(
             icon: const Icon(Icons.logout),
             tooltip: 'Logout',
-            onPressed: () {
-              Navigator.pushAndRemoveUntil(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const LoginScreen(),
-                ),
-                (route) => false,
-              );
+            onPressed: () async {
+              await FirebaseAuth.instance.signOut();
             },
           ),
         ],
@@ -39,7 +33,7 @@ class CaregiverDashboardScreen extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Hello Caregiver 👋',
+              'Hello Caregiver',
               style: TextStyle(
                 fontSize: 27,
                 fontWeight: FontWeight.bold,
@@ -117,8 +111,7 @@ class CaregiverDashboardScreen extends StatelessWidget {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) =>
-                              const MedicineScreen(),
+                          builder: (context) => const MedicineScreen(),
                         ),
                       );
                     },
@@ -220,8 +213,7 @@ class CaregiverDashboardScreen extends StatelessWidget {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) =>
-                        const MedicineScreen(),
+                    builder: (context) => const MedicineScreen(),
                   ),
                 );
               },

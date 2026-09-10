@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
+import 'medicine_scan_screen.dart';
 import 'doctor_appointment_screen.dart';
 import 'emergency_screen.dart';
-import 'login_screen.dart';
 import 'medicine_reminder_screen.dart';
 import 'medicine_stock_screen.dart';
 import 'profile_screen.dart';
@@ -30,17 +31,13 @@ class ElderDashboardScreen extends StatelessWidget {
               );
             },
           ),
+
+          // Firebase Logout Button
           IconButton(
             icon: const Icon(Icons.logout),
             tooltip: 'Logout',
-            onPressed: () {
-              Navigator.pushAndRemoveUntil(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const LoginScreen(),
-                ),
-                (route) => false,
-              );
+            onPressed: () async {
+              await FirebaseAuth.instance.signOut();
             },
           ),
         ],
@@ -52,7 +49,7 @@ class ElderDashboardScreen extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Hello Elder 👋',
+              'Hello Elder',
               style: TextStyle(
                 fontSize: 28,
                 fontWeight: FontWeight.bold,
@@ -81,6 +78,7 @@ class ElderDashboardScreen extends StatelessWidget {
 
             const SizedBox(height: 15),
 
+            // Row 1
             Row(
               children: [
                 Expanded(
@@ -89,8 +87,7 @@ class ElderDashboardScreen extends StatelessWidget {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) =>
-                              const MedicineScreen(),
+                          builder: (context) => const MedicineScreen(),
                         ),
                       );
                     },
@@ -111,8 +108,7 @@ class ElderDashboardScreen extends StatelessWidget {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) =>
-                              const MedicineStockScreen(),
+                          builder: (context) => const MedicineStockScreen(),
                         ),
                       );
                     },
@@ -129,6 +125,7 @@ class ElderDashboardScreen extends StatelessWidget {
 
             const SizedBox(height: 12),
 
+            // Row 2
             Row(
               children: [
                 Expanded(
@@ -159,8 +156,7 @@ class ElderDashboardScreen extends StatelessWidget {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) =>
-                              const EmergencyScreen(),
+                          builder: (context) => const EmergencyScreen(),
                         ),
                       );
                     },
@@ -175,6 +171,73 @@ class ElderDashboardScreen extends StatelessWidget {
               ],
             ),
 
+            const SizedBox(height: 12),
+
+            // Scan & Verify Medicine
+            GestureDetector(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const MedicineScanScreen(),
+                  ),
+                );
+              },
+              child: Card(
+                elevation: 3,
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.purple.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(
+                          Icons.document_scanner,
+                          size: 40,
+                          color: Colors.purple,
+                        ),
+                      ),
+
+                      const SizedBox(width: 16),
+
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Scan & Verify Medicine',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            SizedBox(height: 5),
+                            Text(
+                              'Scan medicine to check whether it is correct.',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Colors.grey,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      const Icon(
+                        Icons.arrow_forward_ios,
+                        size: 18,
+                        color: Colors.grey,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+
             const SizedBox(height: 30),
 
             const Text(
@@ -187,14 +250,9 @@ class ElderDashboardScreen extends StatelessWidget {
 
             const SizedBox(height: 15),
 
-            ValueListenableBuilder<
-                List<Map<String, String>>>(
+            ValueListenableBuilder<List<Map<String, String>>>(
               valueListenable: reminderNotifier,
-              builder: (
-                context,
-                reminders,
-                child,
-              ) {
+              builder: (context, reminders, child) {
                 if (reminders.isEmpty) {
                   return const Card(
                     child: ListTile(
@@ -217,36 +275,32 @@ class ElderDashboardScreen extends StatelessWidget {
                 }
 
                 return Column(
-                  children: reminders.map(
-                    (reminder) {
-                      return Card(
-                        elevation: 3,
-                        margin: const EdgeInsets.only(
-                          bottom: 10,
+                  children: reminders.map((reminder) {
+                    return Card(
+                      elevation: 3,
+                      margin: const EdgeInsets.only(bottom: 10),
+                      child: ListTile(
+                        leading: const Icon(
+                          Icons.medication,
+                          color: Colors.blue,
+                          size: 35,
                         ),
-                        child: ListTile(
-                          leading: const Icon(
-                            Icons.medication,
-                            color: Colors.blue,
-                            size: 35,
-                          ),
-                          title: Text(
-                            reminder['medicine']!,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          subtitle: Text(
-                            'Time: ${reminder['time']}',
-                          ),
-                          trailing: const Icon(
-                            Icons.alarm,
-                            color: Colors.orange,
+                        title: Text(
+                          reminder['medicine'] ?? '',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
-                      );
-                    },
-                  ).toList(),
+                        subtitle: Text(
+                          'Time: ${reminder['time'] ?? ''}',
+                        ),
+                        trailing: const Icon(
+                          Icons.alarm,
+                          color: Colors.orange,
+                        ),
+                      ),
+                    );
+                  }).toList(),
                 );
               },
             ),
@@ -261,8 +315,7 @@ class ElderDashboardScreen extends StatelessWidget {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) =>
-                          const ProfileScreen(),
+                      builder: (context) => const ProfileScreen(),
                     ),
                   );
                 },

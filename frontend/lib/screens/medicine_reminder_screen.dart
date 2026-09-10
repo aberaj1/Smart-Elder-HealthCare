@@ -1,4 +1,8 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 
 final ValueNotifier<List<Map<String, String>>> reminderNotifier =
     ValueNotifier<List<Map<String, String>>>([]);
@@ -17,6 +21,11 @@ class _MedicineScreenState extends State<MedicineScreen> {
   final TextEditingController timeController =
       TextEditingController();
 
+  final ImagePicker picker = ImagePicker();
+
+  File? selectedImage;
+  bool isScanning = false;
+
   final List<String> medicineSuggestions = [
     'Paracetamol Tablet',
     'Pantoprazole Tablet',
@@ -34,6 +43,81 @@ class _MedicineScreenState extends State<MedicineScreen> {
     medicineController.dispose();
     timeController.dispose();
     super.dispose();
+  }
+
+  Future<void> scanMedicine() async {
+    try {
+      final XFile? image = await picker.pickImage(
+        source: ImageSource.camera,
+      );
+
+      if (image == null) {
+        return;
+      }
+
+      setState(() {
+        selectedImage = File(image.path);
+        isScanning = true;
+      });
+
+      final inputImage = InputImage.fromFilePath(
+        image.path,
+      );
+
+      final textRecognizer =
+          TextRecognizer(script: TextRecognitionScript.latin);
+
+      final RecognizedText recognizedText =
+          await textRecognizer.processImage(
+        inputImage,
+      );
+
+      await textRecognizer.close();
+
+      if (!mounted) return;
+
+      final String scannedText =
+          recognizedText.text.trim();
+
+      if (scannedText.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'No text detected. Please try again.',
+            ),
+          ),
+        );
+      } else {
+        setState(() {
+          // First detected text will be shown
+          medicineController.text = scannedText;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Medicine text scanned successfully!',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'OCR scan failed: $e',
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          isScanning = false;
+        });
+      }
+    }
   }
 
   void addReminder() {
@@ -107,9 +191,7 @@ class _MedicineScreenState extends State<MedicineScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'Medicine Reminder',
-        ),
+        title: const Text('Medicine Reminder'),
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
       ),
@@ -129,6 +211,50 @@ class _MedicineScreenState extends State<MedicineScreen> {
             ),
 
             const SizedBox(height: 20),
+
+            // Scan Medicine Button
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton.icon(
+                onPressed: isScanning
+                    ? null
+                    : scanMedicine,
+                icon: isScanning
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.document_scanner),
+                label: Text(
+                  isScanning
+                      ? 'Scanning Medicine...'
+                      : 'Scan Medicine',
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 15),
+
+            // Show selected image
+            if (selectedImage != null)
+              ClipRRect(
+                borderRadius:
+                    BorderRadius.circular(10),
+                child: Image.file(
+                  selectedImage!,
+                  height: 180,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                ),
+              ),
+
+            if (selectedImage != null)
+              const SizedBox(height: 15),
 
             Autocomplete<String>(
               optionsBuilder:
@@ -156,6 +282,13 @@ class _MedicineScreenState extends State<MedicineScreen> {
                 focusNode,
                 onFieldSubmitted,
               ) {
+                // Keep autocomplete controller
+                if (medicineController.text.isNotEmpty &&
+                    controller.text.isEmpty) {
+                  controller.text =
+                      medicineController.text;
+                }
+
                 return TextField(
                   controller: controller,
                   focusNode: focusNode,
@@ -169,7 +302,7 @@ class _MedicineScreenState extends State<MedicineScreen> {
                       const InputDecoration(
                     labelText: 'Medicine Name',
                     hintText:
-                        'Type medicine name',
+                        'Type or scan medicine name',
                     border:
                         OutlineInputBorder(),
                     prefixIcon:
@@ -185,7 +318,6 @@ class _MedicineScreenState extends State<MedicineScreen> {
               controller: timeController,
               readOnly: true,
               onTap: selectTime,
-
               decoration:
                   const InputDecoration(
                 labelText: 'Medicine Time',
@@ -242,9 +374,7 @@ class _MedicineScreenState extends State<MedicineScreen> {
                 shrinkWrap: true,
                 physics:
                     const NeverScrollableScrollPhysics(),
-
                 itemCount: reminders.length,
-
                 itemBuilder:
                     (context, index) {
                   final reminder =
@@ -256,14 +386,12 @@ class _MedicineScreenState extends State<MedicineScreen> {
                         const EdgeInsets.only(
                       bottom: 12,
                     ),
-
                     child: ListTile(
                       leading: const Icon(
                         Icons.medication,
                         color: Colors.blue,
                         size: 40,
                       ),
-
                       title: Text(
                         reminder['medicine']!,
                         style:
@@ -273,22 +401,17 @@ class _MedicineScreenState extends State<MedicineScreen> {
                           fontSize: 18,
                         ),
                       ),
-
                       subtitle: Text(
                         'Time: ${reminder['time']}',
                       ),
-
                       trailing:
                           IconButton(
                         icon: const Icon(
                           Icons.delete,
                           color: Colors.red,
                         ),
-
                         onPressed: () {
-                          deleteReminder(
-                            index,
-                          );
+                          deleteReminder(index);
                         },
                       ),
                     ),
