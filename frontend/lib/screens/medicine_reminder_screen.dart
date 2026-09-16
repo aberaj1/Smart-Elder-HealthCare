@@ -1,176 +1,338 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 final ValueNotifier<List<Map<String, String>>> reminderNotifier =
     ValueNotifier<List<Map<String, String>>>([]);
 
-class MedicineScreen extends StatefulWidget {
-  const MedicineScreen({super.key});
+class MedicineReminderScreen extends StatefulWidget {
+  const MedicineReminderScreen({super.key});
 
   @override
-  State<MedicineScreen> createState() => _MedicineScreenState();
+  State<MedicineReminderScreen> createState() =>
+      _MedicineReminderScreenState();
 }
 
-class _MedicineScreenState extends State<MedicineScreen> {
+class _MedicineReminderScreenState
+    extends State<MedicineReminderScreen> {
   final TextEditingController medicineController =
+      TextEditingController();
+
+  final TextEditingController strengthController =
       TextEditingController();
 
   final TextEditingController timeController =
       TextEditingController();
 
-  final ImagePicker picker = ImagePicker();
-
-  File? selectedImage;
-  bool isScanning = false;
-
   final List<String> medicineSuggestions = [
-    'Paracetamol Tablet',
-    'Pantoprazole Tablet',
-    'Amoxicillin Tablet',
-    'Aspirin Tablet',
-    'Cetirizine Tablet',
-    'Ibuprofen Tablet',
-    'Metformin Tablet',
+    'Paracetamol',
+    'Pantoprazole',
+    'Amoxicillin',
+    'Aspirin',
+    'Cetirizine',
+    'Ibuprofen',
+    'Metformin',
+    'Amlodipine',
+    'Atorvastatin',
+    'Losartan',
+    'Telmisartan',
+    'Omeprazole',
   ];
 
   final List<Map<String, String>> reminders = [];
 
+  bool isLoading = true;
+  bool isAdding = false;
+
+  @override
+  void initState() {
+    super.initState();
+    loadReminders();
+  }
+
   @override
   void dispose() {
     medicineController.dispose();
+    strengthController.dispose();
     timeController.dispose();
     super.dispose();
   }
 
-  Future<void> scanMedicine() async {
-    try {
-      final XFile? image = await picker.pickImage(
-        source: ImageSource.camera,
-      );
+  // ================= LOAD REMINDERS =================
 
-      if (image == null) {
+  Future<void> loadReminders() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+
+      if (user == null) {
+        if (!mounted) return;
+
+        setState(() {
+          isLoading = false;
+        });
+
         return;
       }
 
-      setState(() {
-        selectedImage = File(image.path);
-        isScanning = true;
-      });
+      final snapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('medicine_reminders')
+          .orderBy('createdAt', descending: false)
+          .get();
 
-      final inputImage = InputImage.fromFilePath(
-        image.path,
-      );
+      final loadedReminders = <Map<String, String>>[];
 
-      final textRecognizer =
-          TextRecognizer(script: TextRecognitionScript.latin);
+      for (final doc in snapshot.docs) {
+        final data = doc.data();
 
-      final RecognizedText recognizedText =
-          await textRecognizer.processImage(
-        inputImage,
-      );
-
-      await textRecognizer.close();
+        loadedReminders.add({
+          'id': doc.id,
+          'medicine': data['medicine']?.toString() ?? '',
+          'strength': data['strength']?.toString() ?? '',
+          'time': data['time']?.toString() ?? '',
+          'status': data['status']?.toString() ?? 'Pending',
+        });
+      }
 
       if (!mounted) return;
 
-      final String scannedText =
-          recognizedText.text.trim();
-
-      if (scannedText.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'No text detected. Please try again.',
-            ),
-          ),
-        );
-      } else {
-        setState(() {
-          // First detected text will be shown
-          medicineController.text = scannedText;
-        });
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Medicine text scanned successfully!',
-            ),
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'OCR scan failed: $e',
-            ),
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          isScanning = false;
-        });
-      }
-    }
-  }
-
-  void addReminder() {
-    final medicine = medicineController.text.trim();
-    final time = timeController.text.trim();
-
-    if (medicine.isEmpty || time.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Please enter medicine name and time.',
-          ),
-        ),
-      );
-      return;
-    }
-
-    setState(() {
-      reminders.add({
-        'medicine': medicine,
-        'time': time,
+      setState(() {
+        reminders.clear();
+        reminders.addAll(loadedReminders);
+        isLoading = false;
       });
 
       reminderNotifier.value =
           List<Map<String, String>>.from(reminders);
-    });
+    } catch (e) {
+      if (!mounted) return;
 
-    medicineController.clear();
-    timeController.clear();
+      setState(() {
+        isLoading = false;
+      });
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'Medicine reminder added successfully!',
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Unable to load reminders: $e',
+          ),
         ),
-      ),
-    );
+      );
+    }
   }
 
-  void deleteReminder(int index) {
-    setState(() {
-      reminders.removeAt(index);
+  // ================= ADD REMINDER =================
 
-      reminderNotifier.value =
-          List<Map<String, String>>.from(reminders);
-    });
+  Future<void> addReminder() async {
+    final medicine = medicineController.text.trim();
+    final strength = strengthController.text.trim();
+    final time = timeController.text.trim();
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Reminder deleted.'),
-      ),
-    );
+    if (medicine.isEmpty ||
+        strength.isEmpty ||
+        time.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Please enter medicine name, strength and time.',
+          ),
+        ),
+      );
+
+      return;
+    }
+
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Please login again.',
+          ),
+        ),
+      );
+
+      return;
+    }
+
+    try {
+      setState(() {
+        isAdding = true;
+      });
+
+      final docRef = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('medicine_reminders')
+          .add({
+        'medicine': medicine,
+        'strength': strength,
+        'time': time,
+        'status': 'Pending',
+        'statusUpdatedAt': null,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+
+      if (!mounted) return;
+
+      setState(() {
+        reminders.add({
+          'id': docRef.id,
+          'medicine': medicine,
+          'strength': strength,
+          'time': time,
+          'status': 'Pending',
+        });
+
+        reminderNotifier.value =
+            List<Map<String, String>>.from(reminders);
+
+        isAdding = false;
+      });
+
+      medicineController.clear();
+      strengthController.clear();
+      timeController.clear();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Medicine reminder saved successfully!',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        isAdding = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Unable to save reminder: $e',
+          ),
+        ),
+      );
+    }
   }
+
+  // ================= UPDATE MEDICINE STATUS =================
+
+  Future<void> updateMedicineStatus(
+    int index,
+    String status,
+  ) async {
+    final reminder = reminders[index];
+    final id = reminder['id'];
+
+    if (id == null || id.isEmpty) {
+      return;
+    }
+
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user == null) {
+      return;
+    }
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('medicine_reminders')
+          .doc(id)
+          .update({
+        'status': status,
+        'statusUpdatedAt': FieldValue.serverTimestamp(),
+      });
+
+      if (!mounted) return;
+
+      setState(() {
+        reminders[index]['status'] = status;
+
+        reminderNotifier.value =
+            List<Map<String, String>>.from(reminders);
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${reminder['medicine']} marked as $status.',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Unable to update medicine status: $e',
+          ),
+        ),
+      );
+    }
+  }
+
+  // ================= DELETE REMINDER =================
+
+  Future<void> deleteReminder(int index) async {
+    final reminder = reminders[index];
+    final id = reminder['id'];
+
+    if (id == null || id.isEmpty) {
+      return;
+    }
+
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user == null) {
+      return;
+    }
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('medicine_reminders')
+          .doc(id)
+          .delete();
+
+      if (!mounted) return;
+
+      setState(() {
+        reminders.removeAt(index);
+
+        reminderNotifier.value =
+            List<Map<String, String>>.from(reminders);
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Reminder deleted successfully.',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Unable to delete reminder: $e',
+          ),
+        ),
+      );
+    }
+  }
+
+  // ================= SELECT TIME =================
 
   Future<void> selectTime() async {
     final TimeOfDay? selectedTime =
@@ -187,11 +349,29 @@ class _MedicineScreenState extends State<MedicineScreen> {
     }
   }
 
+  // ================= STATUS COLOR =================
+
+  Color getStatusColor(String status) {
+    if (status == 'Taken') {
+      return Colors.green;
+    }
+
+    if (status == 'Missed') {
+      return Colors.red;
+    }
+
+    return Colors.orange;
+  }
+
+  // ================= BUILD =================
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Medicine Reminder'),
+        title: const Text(
+          'Medicine Reminder',
+        ),
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
       ),
@@ -212,50 +392,7 @@ class _MedicineScreenState extends State<MedicineScreen> {
 
             const SizedBox(height: 20),
 
-            // Scan Medicine Button
-            SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: ElevatedButton.icon(
-                onPressed: isScanning
-                    ? null
-                    : scanMedicine,
-                icon: isScanning
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Icon(Icons.document_scanner),
-                label: Text(
-                  isScanning
-                      ? 'Scanning Medicine...'
-                      : 'Scan Medicine',
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 15),
-
-            // Show selected image
-            if (selectedImage != null)
-              ClipRRect(
-                borderRadius:
-                    BorderRadius.circular(10),
-                child: Image.file(
-                  selectedImage!,
-                  height: 180,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
-                ),
-              ),
-
-            if (selectedImage != null)
-              const SizedBox(height: 15),
-
+            // Medicine Name
             Autocomplete<String>(
               optionsBuilder:
                   (TextEditingValue value) {
@@ -282,7 +419,6 @@ class _MedicineScreenState extends State<MedicineScreen> {
                 focusNode,
                 onFieldSubmitted,
               ) {
-                // Keep autocomplete controller
                 if (medicineController.text.isNotEmpty &&
                     controller.text.isEmpty) {
                   controller.text =
@@ -294,15 +430,14 @@ class _MedicineScreenState extends State<MedicineScreen> {
                   focusNode: focusNode,
 
                   onChanged: (value) {
-                    medicineController.text =
-                        value;
+                    medicineController.text = value;
                   },
 
                   decoration:
                       const InputDecoration(
                     labelText: 'Medicine Name',
                     hintText:
-                        'Type or scan medicine name',
+                        'Enter medicine name',
                     border:
                         OutlineInputBorder(),
                     prefixIcon:
@@ -314,6 +449,26 @@ class _MedicineScreenState extends State<MedicineScreen> {
 
             const SizedBox(height: 15),
 
+            // Strength
+            TextField(
+              controller: strengthController,
+              keyboardType:
+                  TextInputType.text,
+              decoration:
+                  const InputDecoration(
+                labelText: 'Strength',
+                hintText:
+                    'Example: 500 mg',
+                border:
+                    OutlineInputBorder(),
+                prefixIcon:
+                    Icon(Icons.science),
+              ),
+            ),
+
+            const SizedBox(height: 15),
+
+            // Time
             TextField(
               controller: timeController,
               readOnly: true,
@@ -321,7 +476,8 @@ class _MedicineScreenState extends State<MedicineScreen> {
               decoration:
                   const InputDecoration(
                 labelText: 'Medicine Time',
-                hintText: 'Select time',
+                hintText:
+                    'Select time',
                 border:
                     OutlineInputBorder(),
                 prefixIcon:
@@ -331,13 +487,28 @@ class _MedicineScreenState extends State<MedicineScreen> {
 
             const SizedBox(height: 20),
 
+            // Add Button
             SizedBox(
               width: double.infinity,
+              height: 50,
               child: ElevatedButton.icon(
-                onPressed: addReminder,
-                icon: const Icon(Icons.add),
-                label: const Text(
-                  'Add Reminder',
+                onPressed:
+                    isAdding ? null : addReminder,
+                icon: isAdding
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child:
+                            CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.add),
+                label: Text(
+                  isAdding
+                      ? 'Saving...'
+                      : 'Add Reminder',
                 ),
               ),
             ),
@@ -354,7 +525,15 @@ class _MedicineScreenState extends State<MedicineScreen> {
 
             const SizedBox(height: 15),
 
-            if (reminders.isEmpty)
+            if (isLoading)
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(20),
+                  child:
+                      CircularProgressIndicator(),
+                ),
+              )
+            else if (reminders.isEmpty)
               const Card(
                 child: ListTile(
                   leading: Icon(
@@ -365,7 +544,7 @@ class _MedicineScreenState extends State<MedicineScreen> {
                     'No reminders added',
                   ),
                   subtitle: Text(
-                    'Add medicine name and time above',
+                    'Add medicine name, strength and time above',
                   ),
                 ),
               )
@@ -380,44 +559,189 @@ class _MedicineScreenState extends State<MedicineScreen> {
                   final reminder =
                       reminders[index];
 
+                  final status =
+                      reminder['status'] ??
+                          'Pending';
+
+                  final statusColor =
+                      getStatusColor(status);
+
                   return Card(
                     elevation: 3,
                     margin:
                         const EdgeInsets.only(
                       bottom: 12,
                     ),
-                    child: ListTile(
-                      leading: const Icon(
-                        Icons.medication,
-                        color: Colors.blue,
-                        size: 40,
-                      ),
-                      title: Text(
-                        reminder['medicine']!,
-                        style:
-                            const TextStyle(
-                          fontWeight:
-                              FontWeight.bold,
-                          fontSize: 18,
-                        ),
-                      ),
-                      subtitle: Text(
-                        'Time: ${reminder['time']}',
-                      ),
-                      trailing:
-                          IconButton(
-                        icon: const Icon(
-                          Icons.delete,
-                          color: Colors.red,
-                        ),
-                        onPressed: () {
-                          deleteReminder(index);
-                        },
+                    child: Padding(
+                      padding:
+                          const EdgeInsets.all(12),
+                      child: Column(
+                        children: [
+                          ListTile(
+                            contentPadding:
+                                EdgeInsets.zero,
+
+                            leading:
+                                const Icon(
+                              Icons.medication,
+                              color: Colors.blue,
+                              size: 40,
+                            ),
+
+                            title: Text(
+                              reminder['medicine'] ??
+                                  '',
+                              style:
+                                  const TextStyle(
+                                fontWeight:
+                                    FontWeight.bold,
+                                fontSize: 18,
+                              ),
+                            ),
+
+                            subtitle: Text(
+                              'Strength: ${reminder['strength'] ?? ''}\n'
+                              'Time: ${reminder['time'] ?? ''}',
+                            ),
+
+                            isThreeLine: true,
+
+                            trailing:
+                                IconButton(
+                              icon:
+                                  const Icon(
+                                Icons.delete,
+                                color: Colors.red,
+                              ),
+                              onPressed: () {
+                                deleteReminder(
+                                    index);
+                              },
+                            ),
+                          ),
+
+                          const Divider(),
+
+                          // Status
+                          Row(
+                            children: [
+                              const Text(
+                                'Status: ',
+                                style:
+                                    TextStyle(
+                                  fontWeight:
+                                      FontWeight.bold,
+                                ),
+                              ),
+
+                              Container(
+                                padding:
+                                    const EdgeInsets
+                                        .symmetric(
+                                  horizontal: 10,
+                                  vertical: 5,
+                                ),
+                                decoration:
+                                    BoxDecoration(
+                                  color: statusColor
+                                      .withOpacity(
+                                          0.1),
+                                  borderRadius:
+                                      BorderRadius
+                                          .circular(
+                                              20),
+                                ),
+                                child: Text(
+                                  status,
+                                  style: TextStyle(
+                                    color:
+                                        statusColor,
+                                    fontWeight:
+                                        FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+
+                          const SizedBox(height: 10),
+
+                          // Taken / Missed
+                          Row(
+                            children: [
+                              Expanded(
+                                child:
+                                    ElevatedButton
+                                        .icon(
+                                  onPressed: () {
+                                    updateMedicineStatus(
+                                      index,
+                                      'Taken',
+                                    );
+                                  },
+                                  icon:
+                                      const Icon(
+                                    Icons.check,
+                                    size: 18,
+                                  ),
+                                  label:
+                                      const Text(
+                                    'Taken',
+                                  ),
+                                  style:
+                                      ElevatedButton
+                                          .styleFrom(
+                                    backgroundColor:
+                                        Colors.green,
+                                    foregroundColor:
+                                        Colors.white,
+                                  ),
+                                ),
+                              ),
+
+                              const SizedBox(
+                                width: 10,
+                              ),
+
+                              Expanded(
+                                child:
+                                    ElevatedButton
+                                        .icon(
+                                  onPressed: () {
+                                    updateMedicineStatus(
+                                      index,
+                                      'Missed',
+                                    );
+                                  },
+                                  icon:
+                                      const Icon(
+                                    Icons.close,
+                                    size: 18,
+                                  ),
+                                  label:
+                                      const Text(
+                                    'Missed',
+                                  ),
+                                  style:
+                                      ElevatedButton
+                                          .styleFrom(
+                                    backgroundColor:
+                                        Colors.red,
+                                    foregroundColor:
+                                        Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
                     ),
                   );
                 },
               ),
+
+            const SizedBox(height: 30),
           ],
         ),
       ),

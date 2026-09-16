@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 class DoctorAppointmentScreen extends StatefulWidget {
@@ -18,8 +20,16 @@ class _DoctorAppointmentScreenState
 
   DateTime? selectedDate;
   TimeOfDay? selectedTime;
+  bool isSaving = false;
 
-  final List<Map<String, String>> appointments = [];
+  User? get currentUser => FirebaseAuth.instance.currentUser;
+
+  CollectionReference<Map<String, dynamic>> get appointmentCollection {
+    return FirebaseFirestore.instance
+        .collection('users')
+        .doc(currentUser!.uid)
+        .collection('appointments');
+  }
 
   @override
   void dispose() {
@@ -33,7 +43,7 @@ class _DoctorAppointmentScreenState
       context: context,
       initialDate: DateTime.now(),
       firstDate: DateTime.now(),
-      lastDate: DateTime(2030),
+      lastDate: DateTime(2035),
     );
 
     if (date != null) {
@@ -56,7 +66,7 @@ class _DoctorAppointmentScreenState
     }
   }
 
-  void addAppointment() {
+  Future<void> addAppointment() async {
     final doctor = doctorController.text.trim();
     final specialization =
         specializationController.text.trim();
@@ -65,54 +75,103 @@ class _DoctorAppointmentScreenState
         specialization.isEmpty ||
         selectedDate == null ||
         selectedTime == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Please enter all appointment details.',
-          ),
-        ),
-      );
+      showMessage('Please enter all appointment details.');
+      return;
+    }
+
+    if (currentUser == null) {
+      showMessage('Please login first.');
       return;
     }
 
     setState(() {
-      appointments.add({
+      isSaving = true;
+    });
+
+    try {
+      await appointmentCollection.add({
         'doctor': doctor,
         'specialization': specialization,
-        'date':
-            '${selectedDate!.day}/${selectedDate!.month}/${selectedDate!.year}',
+        'date': Timestamp.fromDate(selectedDate!),
+        'timeHour': selectedTime!.hour,
+        'timeMinute': selectedTime!.minute,
         'time': selectedTime!.format(context),
+        'userId': currentUser!.uid,
+        'createdAt': FieldValue.serverTimestamp(),
       });
-    });
 
-    doctorController.clear();
-    specializationController.clear();
+      doctorController.clear();
+      specializationController.clear();
 
-    setState(() {
-      selectedDate = null;
-      selectedTime = null;
-    });
+      setState(() {
+        selectedDate = null;
+        selectedTime = null;
+        isSaving = false;
+      });
+
+      showMessage('Appointment added successfully!');
+    } catch (e) {
+      setState(() {
+        isSaving = false;
+      });
+
+      showMessage('Error adding appointment: $e');
+    }
+  }
+
+  Future<void> deleteAppointment(String documentId) async {
+    try {
+      await appointmentCollection.doc(documentId).delete();
+
+      showMessage('Appointment deleted');
+    } catch (e) {
+      showMessage('Unable to delete appointment');
+    }
+  }
+
+  String formatDate(Timestamp? timestamp) {
+    if (timestamp == null) {
+      return 'No date';
+    }
+
+    final date = timestamp.toDate();
+
+    return '${date.day.toString().padLeft(2, '0')}/'
+        '${date.month.toString().padLeft(2, '0')}/'
+        '${date.year}';
+  }
+
+  void showMessage(String message) {
+    if (!mounted) return;
 
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'Appointment added successfully!',
-        ),
+      SnackBar(
+        content: Text(message),
       ),
     );
   }
 
-  void deleteAppointment(int index) {
-    setState(() {
-      appointments.removeAt(index);
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
+    if (currentUser == null) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Doctor Appointments'),
+        ),
+        body: const Center(
+          child: Text('Please login first'),
+        ),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Doctor Appointments'),
+        title: const Text(
+          'Doctor Appointments',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
         backgroundColor: Colors.green,
         foregroundColor: Colors.white,
       ),
@@ -164,7 +223,9 @@ class _DoctorAppointmentScreenState
                 label: Text(
                   selectedDate == null
                       ? 'Select Appointment Date'
-                      : 'Date: ${selectedDate!.day}/${selectedDate!.month}/${selectedDate!.year}',
+                      : 'Date: ${selectedDate!.day}/'
+                          '${selectedDate!.month}/'
+                          '${selectedDate!.year}',
                 ),
               ),
             ),
@@ -189,9 +250,21 @@ class _DoctorAppointmentScreenState
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
-                onPressed: addAppointment,
-                icon: const Icon(Icons.add),
-                label: const Text('Add Appointment'),
+                onPressed: isSaving ? null : addAppointment,
+                icon: isSaving
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : const Icon(Icons.add),
+                label: Text(
+                  isSaving
+                      ? 'Saving...'
+                      : 'Add Appointment',
+                ),
               ),
             ),
 
@@ -207,72 +280,125 @@ class _DoctorAppointmentScreenState
 
             const SizedBox(height: 15),
 
-            if (appointments.isEmpty)
-              const Card(
-                child: ListTile(
-                  leading: Icon(
-                    Icons.calendar_month,
-                    color: Colors.green,
-                    size: 35,
-                  ),
-                  title: Text(
-                    'No appointments added',
-                  ),
-                  subtitle: Text(
-                    'Add your doctor appointment above',
-                  ),
-                ),
-              )
-            else
-              ListView.builder(
-                shrinkWrap: true,
-                physics:
-                    const NeverScrollableScrollPhysics(),
-                itemCount: appointments.length,
-                itemBuilder: (context, index) {
-                  final appointment =
-                      appointments[index];
+            StreamBuilder<
+                QuerySnapshot<Map<String, dynamic>>>(
+              stream: appointmentCollection
+                  .orderBy(
+                    'date',
+                    descending: false,
+                  )
+                  .snapshots(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState ==
+                    ConnectionState.waiting) {
+                  return const Center(
+                    child: CircularProgressIndicator(),
+                  );
+                }
 
+                if (snapshot.hasError) {
                   return Card(
-                    elevation: 3,
-                    margin:
-                        const EdgeInsets.only(bottom: 12),
-                    child: ListTile(
-                      leading: const Icon(
-                        Icons.local_hospital,
-                        color: Colors.green,
-                        size: 40,
-                      ),
-
-                      title: Text(
-                        appointment['doctor']!,
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-
-                      subtitle: Text(
-                        '${appointment['specialization']}\n'
-                        'Date: ${appointment['date']}\n'
-                        'Time: ${appointment['time']}',
-                      ),
-
-                      isThreeLine: true,
-
-                      trailing: IconButton(
-                        icon: const Icon(
-                          Icons.delete,
-                          color: Colors.red,
-                        ),
-                        onPressed: () {
-                          deleteAppointment(index);
-                        },
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Text(
+                        'Error loading appointments:\n'
+                        '${snapshot.error}',
                       ),
                     ),
                   );
-                },
-              ),
+                }
+
+                final documents =
+                    snapshot.data?.docs ?? [];
+
+                if (documents.isEmpty) {
+                  return const Card(
+                    child: ListTile(
+                      leading: Icon(
+                        Icons.calendar_month,
+                        color: Colors.green,
+                        size: 35,
+                      ),
+                      title: Text(
+                        'No appointments added',
+                      ),
+                      subtitle: Text(
+                        'Add your doctor appointment above',
+                      ),
+                    ),
+                  );
+                }
+
+                return ListView.builder(
+                  shrinkWrap: true,
+                  physics:
+                      const NeverScrollableScrollPhysics(),
+                  itemCount: documents.length,
+                  itemBuilder: (context, index) {
+                    final doc = documents[index];
+                    final data = doc.data();
+
+                    final doctor =
+                        data['doctor'] ?? 'Unknown Doctor';
+
+                    final specialization =
+                        data['specialization'] ?? '';
+
+                    final date =
+                        data['date'] as Timestamp?;
+
+                    final time =
+                        data['time'] ?? 'No time';
+
+                    return Card(
+                      elevation: 3,
+                      margin:
+                          const EdgeInsets.only(bottom: 12),
+                      child: ListTile(
+                        contentPadding:
+                            const EdgeInsets.all(12),
+
+                        leading: const Icon(
+                          Icons.local_hospital,
+                          color: Colors.green,
+                          size: 40,
+                        ),
+
+                        title: Text(
+                          doctor,
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+
+                        subtitle: Padding(
+                          padding:
+                              const EdgeInsets.only(top: 6),
+                          child: Text(
+                            '$specialization\n'
+                            'Date: ${formatDate(date)}\n'
+                            'Time: $time',
+                          ),
+                        ),
+
+                        isThreeLine: true,
+
+                        trailing: IconButton(
+                          icon: const Icon(
+                            Icons.delete,
+                            color: Colors.red,
+                          ),
+                          onPressed: () {
+                            deleteAppointment(doc.id);
+                          },
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
           ],
         ),
       ),

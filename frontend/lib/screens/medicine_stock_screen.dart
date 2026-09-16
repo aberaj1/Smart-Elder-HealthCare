@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 class MedicineStockScreen extends StatefulWidget {
@@ -8,259 +10,669 @@ class MedicineStockScreen extends StatefulWidget {
 }
 
 class _MedicineStockScreenState extends State<MedicineStockScreen> {
-  final TextEditingController medicineController =
-      TextEditingController();
+  final TextEditingController medicineController = TextEditingController();
+  final TextEditingController quantityController = TextEditingController();
 
-  final TextEditingController stockController =
-      TextEditingController();
+  DateTime? selectedExpiryDate;
+  bool isLoading = false;
 
-  final List<String> medicineSuggestions = [
-    'Paracetamol Tablet',
-    'Pantoprazole Tablet',
-    'Amoxicillin Tablet',
-    'Aspirin Tablet',
-    'Cetirizine Tablet',
-    'Ibuprofen Tablet',
-    'Metformin Tablet',
-  ];
+  User? get currentUser => FirebaseAuth.instance.currentUser;
 
-  final List<Map<String, dynamic>> medicines = [];
+  CollectionReference<Map<String, dynamic>> get stockCollection {
+    return FirebaseFirestore.instance
+        .collection('users')
+        .doc(currentUser!.uid)
+        .collection('medicine_stock');
+  }
 
   @override
   void dispose() {
     medicineController.dispose();
-    stockController.dispose();
+    quantityController.dispose();
     super.dispose();
   }
 
-  void addMedicine() {
-    final name = medicineController.text.trim();
-    final stockText = stockController.text.trim();
+  Future<void> selectExpiryDate() async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime.now(),
+      lastDate: DateTime(2100),
+    );
 
-    if (name.isEmpty || stockText.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter medicine name and stock.'),
-        ),
-      );
+    if (picked != null) {
+      setState(() {
+        selectedExpiryDate = picked;
+      });
+    }
+  }
+
+  Future<void> addMedicineStock() async {
+    final medicineName = medicineController.text.trim();
+    final quantityText = quantityController.text.trim();
+
+    if (medicineName.isEmpty || quantityText.isEmpty) {
+      showMessage("Please enter medicine name and quantity");
       return;
     }
 
-    final stock = int.tryParse(stockText);
+    final int? quantity = int.tryParse(quantityText);
 
-    if (stock == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter a valid stock number.'),
-        ),
-      );
+    if (quantity == null || quantity < 0) {
+      showMessage("Please enter a valid quantity");
+      return;
+    }
+
+    if (selectedExpiryDate == null) {
+      showMessage("Please select expiry date");
+      return;
+    }
+
+    if (currentUser == null) {
+      showMessage("User not logged in");
       return;
     }
 
     setState(() {
-      medicines.add({
-        'name': name,
-        'stock': stock,
-      });
+      isLoading = true;
     });
 
+    try {
+      await stockCollection.add({
+        'medicineName': medicineName,
+        'quantity': quantity,
+        'expiryDate': Timestamp.fromDate(selectedExpiryDate!),
+        'userId': currentUser!.uid,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+
+      medicineController.clear();
+      quantityController.clear();
+
+      setState(() {
+        selectedExpiryDate = null;
+        isLoading = false;
+      });
+
+      if (mounted) {
+        Navigator.pop(context);
+      }
+
+      showMessage("Medicine stock added successfully");
+    } catch (e) {
+      setState(() {
+        isLoading = false;
+      });
+
+      showMessage("Error: $e");
+    }
+  }
+
+  Future<void> updateQuantity(
+    String documentId,
+    int currentQuantity,
+    int change,
+  ) async {
+    int newQuantity = currentQuantity + change;
+
+    if (newQuantity < 0) {
+      newQuantity = 0;
+    }
+
+    try {
+      await stockCollection.doc(documentId).update({
+        'quantity': newQuantity,
+      });
+    } catch (e) {
+      showMessage("Unable to update stock");
+    }
+  }
+
+  Future<void> deleteMedicine(String documentId) async {
+    try {
+      await stockCollection.doc(documentId).delete();
+
+      showMessage("Medicine deleted");
+    } catch (e) {
+      showMessage("Unable to delete medicine");
+    }
+  }
+
+  void showAddStockDialog() {
     medicineController.clear();
-    stockController.clear();
+    quantityController.clear();
+
+    setState(() {
+      selectedExpiryDate = null;
+    });
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text(
+                "Add Medicine Stock",
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: medicineController,
+                      decoration: const InputDecoration(
+                        labelText: "Medicine Name",
+                        hintText: "Example: Paracetamol",
+                        prefixIcon: Icon(Icons.medication),
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 15),
+                    TextField(
+                      controller: quantityController,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: "Quantity",
+                        hintText: "Example: 10",
+                        prefixIcon: Icon(Icons.inventory),
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 15),
+                    InkWell(
+                      onTap: () async {
+                        final DateTime? picked = await showDatePicker(
+                          context: context,
+                          initialDate: DateTime.now(),
+                          firstDate: DateTime.now(),
+                          lastDate: DateTime(2100),
+                        );
+
+                        if (picked != null) {
+                          setDialogState(() {
+                            selectedExpiryDate = picked;
+                          });
+                        }
+                      },
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(15),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.grey),
+                          borderRadius: BorderRadius.circular(5),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.calendar_month),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                selectedExpiryDate == null
+                                    ? "Select Expiry Date"
+                                    : "${selectedExpiryDate!.day.toString().padLeft(2, '0')}/"
+                                      "${selectedExpiryDate!.month.toString().padLeft(2, '0')}/"
+                                      "${selectedExpiryDate!.year}",
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                  },
+                  child: const Text("Cancel"),
+                ),
+                ElevatedButton(
+                  onPressed: isLoading
+                      ? null
+                      : () async {
+                          final medicineName =
+                              medicineController.text.trim();
+                          final quantityText =
+                              quantityController.text.trim();
+
+                          if (medicineName.isEmpty ||
+                              quantityText.isEmpty ||
+                              selectedExpiryDate == null) {
+                            showMessage(
+                              "Please fill all details",
+                            );
+                            return;
+                          }
+
+                          final quantity = int.tryParse(quantityText);
+
+                          if (quantity == null || quantity < 0) {
+                            showMessage(
+                              "Enter a valid quantity",
+                            );
+                            return;
+                          }
+
+                          if (currentUser == null) {
+                            showMessage(
+                              "User not logged in",
+                            );
+                            return;
+                          }
+
+                          setDialogState(() {
+                            isLoading = true;
+                          });
+
+                          try {
+                            await stockCollection.add({
+                              'medicineName': medicineName,
+                              'quantity': quantity,
+                              'expiryDate':
+                                  Timestamp.fromDate(selectedExpiryDate!),
+                              'userId': currentUser!.uid,
+                              'createdAt':
+                                  FieldValue.serverTimestamp(),
+                            });
+
+                            if (mounted) {
+                              Navigator.pop(context);
+                              showMessage(
+                                "Medicine stock added successfully",
+                              );
+                            }
+                          } catch (e) {
+                            setDialogState(() {
+                              isLoading = false;
+                            });
+
+                            showMessage("Error adding medicine");
+                          }
+                        },
+                  child: isLoading
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : const Text("Add"),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  String formatDate(Timestamp? timestamp) {
+    if (timestamp == null) {
+      return "No expiry date";
+    }
+
+    final date = timestamp.toDate();
+
+    return "${date.day.toString().padLeft(2, '0')}/"
+        "${date.month.toString().padLeft(2, '0')}/"
+        "${date.year}";
+  }
+
+  bool isExpired(Timestamp? timestamp) {
+    if (timestamp == null) return false;
+
+    final expiryDate = timestamp.toDate();
+
+    final today = DateTime(
+      DateTime.now().year,
+      DateTime.now().month,
+      DateTime.now().day,
+    );
+
+    final expiry = DateTime(
+      expiryDate.year,
+      expiryDate.month,
+      expiryDate.day,
+    );
+
+    return expiry.isBefore(today);
+  }
+
+  void showMessage(String message) {
+    if (!mounted) return;
 
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Medicine stock added successfully!'),
+      SnackBar(
+        content: Text(message),
       ),
     );
   }
 
-  void deleteMedicine(int index) {
-    setState(() {
-      medicines.removeAt(index);
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
+    if (currentUser == null) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text("Medicine Stock"),
+        ),
+        body: const Center(
+          child: Text("Please login first"),
+        ),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Medicine Stock'),
-        backgroundColor: Colors.blue,
-        foregroundColor: Colors.white,
+        title: const Text(
+          "Medicine Stock",
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
       ),
 
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Add Medicine Stock',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: showAddStockDialog,
+        icon: const Icon(Icons.add),
+        label: const Text("Add Medicine"),
+      ),
+
+      body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+        stream: stockCollection
+            .orderBy(
+              'createdAt',
+              descending: true,
+            )
+            .snapshots(),
+
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(
+              child: CircularProgressIndicator(),
+            );
+          }
+
+          if (snapshot.hasError) {
+            return Center(
+              child: Text(
+                "Error loading stock\n${snapshot.error}",
+                textAlign: TextAlign.center,
               ),
-            ),
+            );
+          }
 
-            const SizedBox(height: 20),
+          final documents = snapshot.data?.docs ?? [];
 
-            Autocomplete<String>(
-              optionsBuilder: (TextEditingValue value) {
-                if (value.text.isEmpty) {
-                  return const Iterable<String>.empty();
-                }
-
-                return medicineSuggestions.where(
-                  (medicine) => medicine
-                      .toLowerCase()
-                      .contains(value.text.toLowerCase()),
-                );
-              },
-
-              onSelected: (String value) {
-                medicineController.text = value;
-              },
-
-              fieldViewBuilder: (
-                context,
-                controller,
-                focusNode,
-                onFieldSubmitted,
-              ) {
-                return TextField(
-                  controller: controller,
-                  focusNode: focusNode,
-                  onChanged: (value) {
-                    medicineController.text = value;
-                  },
-                  decoration: const InputDecoration(
-                    labelText: 'Medicine Name',
-                    hintText: 'Type medicine name',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.medication),
+          if (documents.isEmpty) {
+            return const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.inventory_2_outlined,
+                    size: 80,
+                    color: Colors.grey,
                   ),
-                );
-              },
-            ),
-
-            const SizedBox(height: 15),
-
-            TextField(
-              controller: stockController,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: 'Stock Quantity',
-                hintText: 'Example: 20',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.inventory_2),
-              ),
-            ),
-
-            const SizedBox(height: 20),
-
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: addMedicine,
-                icon: const Icon(Icons.add),
-                label: const Text('Add Stock'),
-              ),
-            ),
-
-            const SizedBox(height: 30),
-
-            const Text(
-              'Medicine Stock List',
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-
-            const SizedBox(height: 15),
-
-            if (medicines.isEmpty)
-              const Card(
-                child: ListTile(
-                  leading: Icon(
-                    Icons.inventory_2,
-                    color: Colors.orange,
+                  SizedBox(height: 15),
+                  Text(
+                    "No medicine stock added",
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
-                  title: Text('No medicines added'),
-                  subtitle: Text(
-                    'Add medicine and stock quantity above',
+                  SizedBox(height: 8),
+                  Text(
+                    "Tap + Add Medicine to add stock",
                   ),
-                ),
-              )
-            else
-              ListView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: medicines.length,
-                itemBuilder: (context, index) {
-                  final medicine = medicines[index];
-                  final int stock = medicine['stock'];
+                ],
+              ),
+            );
+          }
 
-                  final bool isLowStock = stock <= 5;
+          return ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: documents.length,
+            itemBuilder: (context, index) {
+              final doc = documents[index];
+              final data = doc.data();
 
-                  return Card(
-                    elevation: 3,
-                    margin: const EdgeInsets.only(bottom: 12),
-                    child: ListTile(
-                      leading: Icon(
-                        Icons.medication,
-                        color: isLowStock
-                            ? Colors.red
-                            : Colors.blue,
-                        size: 40,
-                      ),
+              final String medicineName =
+                  data['medicineName'] ?? "Unknown Medicine";
 
-                      title: Text(
-                        medicine['name'],
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+              final int quantity =
+                  (data['quantity'] ?? 0) as int;
 
-                      subtitle: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+              final Timestamp? expiryDate =
+                  data['expiryDate'] as Timestamp?;
+
+              final bool lowStock = quantity <= 5;
+              final bool expired = isExpired(expiryDate);
+
+              return Card(
+                margin: const EdgeInsets.only(bottom: 14),
+                elevation: 3,
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    children: [
+                      Row(
                         children: [
-                          const SizedBox(height: 5),
-
-                          Text(
-                            'Stock: $stock tablets',
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              borderRadius:
+                                  BorderRadius.circular(12),
+                              color: Colors.blue.shade50,
+                            ),
+                            child: const Icon(
+                              Icons.medication,
+                              size: 30,
+                              color: Colors.blue,
+                            ),
                           ),
 
-                          if (isLowStock)
-                            const Padding(
-                              padding: EdgeInsets.only(top: 5),
-                              child: Text(
-                                '⚠ Low Stock',
-                                style: TextStyle(
-                                  color: Colors.red,
-                                  fontWeight: FontWeight.bold,
+                          const SizedBox(width: 15),
+
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment:
+                                  CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  medicineName,
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+
+                                const SizedBox(height: 6),
+
+                                Text(
+                                  "Expiry: ${formatDate(expiryDate)}",
+                                  style: TextStyle(
+                                    color: expired
+                                        ? Colors.red
+                                        : Colors.grey.shade700,
+                                  ),
+                                ),
+
+                                const SizedBox(height: 6),
+
+                                Row(
+                                  children: [
+                                    Text(
+                                      "Stock: $quantity",
+                                      style: TextStyle(
+                                        fontWeight:
+                                            FontWeight.bold,
+                                        color: lowStock
+                                            ? Colors.red
+                                            : Colors.green,
+                                      ),
+                                    ),
+
+                                    const SizedBox(width: 8),
+
+                                    if (lowStock)
+                                      Container(
+                                        padding:
+                                            const EdgeInsets
+                                                .symmetric(
+                                          horizontal: 8,
+                                          vertical: 3,
+                                        ),
+                                        decoration:
+                                            BoxDecoration(
+                                          color:
+                                              Colors.red.shade50,
+                                          borderRadius:
+                                              BorderRadius
+                                                  .circular(8),
+                                        ),
+                                        child: const Text(
+                                          "Low Stock",
+                                          style: TextStyle(
+                                            color: Colors.red,
+                                            fontSize: 12,
+                                            fontWeight:
+                                                FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+
+                                    if (expired)
+                                      Container(
+                                        margin:
+                                            const EdgeInsets.only(
+                                          left: 5,
+                                        ),
+                                        padding:
+                                            const EdgeInsets
+                                                .symmetric(
+                                          horizontal: 8,
+                                          vertical: 3,
+                                        ),
+                                        decoration:
+                                            BoxDecoration(
+                                          color:
+                                              Colors.red.shade50,
+                                          borderRadius:
+                                              BorderRadius
+                                                  .circular(8),
+                                        ),
+                                        child: const Text(
+                                          "Expired",
+                                          style: TextStyle(
+                                            color: Colors.red,
+                                            fontSize: 12,
+                                            fontWeight:
+                                                FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+
+                          PopupMenuButton<String>(
+                            onSelected: (value) {
+                              if (value == "delete") {
+                                deleteMedicine(doc.id);
+                              }
+                            },
+                            itemBuilder: (context) => [
+                              const PopupMenuItem(
+                                value: "delete",
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.delete,
+                                      color: Colors.red,
+                                    ),
+                                    SizedBox(width: 8),
+                                    Text("Delete"),
+                                  ],
                                 ),
                               ),
-                            ),
+                            ],
+                          ),
                         ],
                       ),
 
-                      trailing: IconButton(
-                        icon: const Icon(
-                          Icons.delete,
-                          color: Colors.red,
-                        ),
-                        onPressed: () {
-                          deleteMedicine(index);
-                        },
+                      const Divider(height: 25),
+
+                      Row(
+                        mainAxisAlignment:
+                            MainAxisAlignment.center,
+                        children: [
+                          IconButton(
+                            onPressed: quantity > 0
+                                ? () {
+                                    updateQuantity(
+                                      doc.id,
+                                      quantity,
+                                      -1,
+                                    );
+                                  }
+                                : null,
+                            icon: const Icon(
+                              Icons.remove_circle,
+                              size: 32,
+                            ),
+                          ),
+
+                          Container(
+                            width: 70,
+                            padding:
+                                const EdgeInsets.symmetric(
+                              vertical: 8,
+                            ),
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              border: Border.all(
+                                color: Colors.grey,
+                              ),
+                              borderRadius:
+                                  BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              "$quantity",
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+
+                          IconButton(
+                            onPressed: () {
+                              updateQuantity(
+                                doc.id,
+                                quantity,
+                                1,
+                              );
+                            },
+                            icon: const Icon(
+                              Icons.add_circle,
+                              size: 32,
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                  );
-                },
-              ),
-          ],
-        ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
+        },
       ),
     );
   }

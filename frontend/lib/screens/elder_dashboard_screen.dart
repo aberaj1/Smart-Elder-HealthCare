@@ -6,39 +6,50 @@ import 'doctor_appointment_screen.dart';
 import 'emergency_screen.dart';
 import 'medicine_reminder_screen.dart';
 import 'medicine_stock_screen.dart';
-import 'profile_screen.dart';
+import 'caregiver_elder_link_screen.dart';
 
-class ElderDashboardScreen extends StatelessWidget {
+class ElderDashboardScreen extends StatefulWidget {
   const ElderDashboardScreen({super.key});
+
+  @override
+  State<ElderDashboardScreen> createState() =>
+      _ElderDashboardScreenState();
+}
+
+class _ElderDashboardScreenState
+    extends State<ElderDashboardScreen> {
+  User? get currentUser => FirebaseAuth.instance.currentUser;
+
+  void openScreen(Widget screen) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => screen,
+      ),
+    );
+  }
+
+  Future<void> logout() async {
+    await FirebaseAuth.instance.signOut();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Elder Dashboard'),
-        backgroundColor: Colors.blue,
+        title: const Text(
+          'Elder Dashboard',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        backgroundColor: Colors.green,
         foregroundColor: Colors.white,
         actions: [
           IconButton(
-            icon: const Icon(Icons.person),
-            tooltip: 'Profile',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const ProfileScreen(),
-                ),
-              );
-            },
-          ),
-
-          // Firebase Logout Button
-          IconButton(
+            onPressed: logout,
             icon: const Icon(Icons.logout),
             tooltip: 'Logout',
-            onPressed: () async {
-              await FirebaseAuth.instance.signOut();
-            },
           ),
         ],
       ),
@@ -46,78 +57,70 @@ class ElderDashboardScreen extends StatelessWidget {
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment:
+              CrossAxisAlignment.start,
           children: [
+
+            // Welcome
             const Text(
-              'Hello Elder',
+              'Welcome Elder',
               style: TextStyle(
-                fontSize: 28,
+                fontSize: 23,
                 fontWeight: FontWeight.bold,
               ),
             ),
 
-            const SizedBox(height: 8),
+            const SizedBox(height: 4),
 
             const Text(
-              'Manage your medicines and healthcare activities easily.',
+              'Smart Elder Healthcare',
               style: TextStyle(
-                fontSize: 16,
                 color: Colors.grey,
+                fontSize: 15,
               ),
             ),
 
-            const SizedBox(height: 25),
+            const SizedBox(height: 20),
 
             const Text(
               'Quick Access',
               style: TextStyle(
-                fontSize: 22,
+                fontSize: 20,
                 fontWeight: FontWeight.bold,
               ),
             ),
 
-            const SizedBox(height: 15),
+            const SizedBox(height: 12),
 
             // Row 1
             Row(
               children: [
+
                 Expanded(
-                  child: GestureDetector(
+                  child: buildFeatureCard(
+                    title: 'Medicine Reminder',
+                    icon: Icons.alarm,
+                    color: Colors.blue,
                     onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const MedicineScreen(),
-                        ),
+                      openScreen(
+                        const MedicineReminderScreen(),
                       );
                     },
-                    child: dashboardCard(
-                      Icons.alarm,
-                      'Medicine',
-                      'Reminder',
-                      Colors.blue,
-                    ),
                   ),
                 ),
 
                 const SizedBox(width: 12),
 
                 Expanded(
-                  child: GestureDetector(
+                  child: buildFeatureCard(
+                    title: 'Medicine Stock',
+                    icon: Icons.inventory_2,
+                    color: Colors.orange,
                     onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const MedicineStockScreen(),
-                        ),
+                      openScreen(
+                        const MedicineStockScreen(),
                       );
                     },
-                    child: dashboardCard(
-                      Icons.inventory_2,
-                      'Medicine',
-                      'Stock',
-                      Colors.orange,
-                    ),
                   ),
                 ),
               ],
@@ -128,44 +131,32 @@ class ElderDashboardScreen extends StatelessWidget {
             // Row 2
             Row(
               children: [
+
                 Expanded(
-                  child: GestureDetector(
+                  child: buildFeatureCard(
+                    title: 'Doctor Appointment',
+                    icon: Icons.local_hospital,
+                    color: Colors.green,
                     onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) =>
-                              const DoctorAppointmentScreen(),
-                        ),
+                      openScreen(
+                        const DoctorAppointmentScreen(),
                       );
                     },
-                    child: dashboardCard(
-                      Icons.calendar_month,
-                      'Doctor',
-                      'Appointment',
-                      Colors.green,
-                    ),
                   ),
                 ),
 
                 const SizedBox(width: 12),
 
                 Expanded(
-                  child: GestureDetector(
+                  child: buildFeatureCard(
+                    title: 'Emergency SOS',
+                    icon: Icons.emergency,
+                    color: Colors.red,
                     onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const EmergencyScreen(),
-                        ),
+                      openScreen(
+                        const EmergencyScreen(),
                       );
                     },
-                    child: dashboardCard(
-                      Icons.emergency,
-                      'Emergency',
-                      'SOS',
-                      Colors.red,
-                    ),
                   ),
                 ),
               ],
@@ -173,203 +164,133 @@ class ElderDashboardScreen extends StatelessWidget {
 
             const SizedBox(height: 12),
 
-            // Scan & Verify Medicine
-            GestureDetector(
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const MedicineScanScreen(),
-                  ),
-                );
-              },
-              child: Card(
-                elevation: 3,
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.purple.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: const Icon(
-                          Icons.document_scanner,
-                          size: 40,
-                          color: Colors.purple,
-                        ),
-                      ),
+            // Row 3
+            Row(
+              children: [
 
-                      const SizedBox(width: 16),
-
-                      const Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Scan & Verify Medicine',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            SizedBox(height: 5),
-                            Text(
-                              'Scan medicine to check whether it is correct.',
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: Colors.grey,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      const Icon(
-                        Icons.arrow_forward_ios,
-                        size: 18,
-                        color: Colors.grey,
-                      ),
-                    ],
+                Expanded(
+                  child: buildFeatureCard(
+                    title: 'Medicine Scan',
+                    icon: Icons.camera_alt,
+                    color: Colors.purple,
+                    onTap: () {
+                      openScreen(
+                        const MedicineScanScreen(),
+                      );
+                    },
                   ),
                 ),
-              ),
+
+                const SizedBox(width: 12),
+
+                Expanded(
+                  child: buildFeatureCard(
+                    title: 'Caregiver Link',
+                    icon: Icons.family_restroom,
+                    color: Colors.teal,
+                    onTap: () {
+                      openScreen(
+                        const CaregiverElderLinkScreen(),
+                      );
+                    },
+                  ),
+                ),
+              ],
             ),
 
-            const SizedBox(height: 30),
+            const SizedBox(height: 18),
 
+            // Today's Reminder
             const Text(
-              "Today's Reminder",
+              'Today\'s Reminder',
               style: TextStyle(
-                fontSize: 22,
+                fontSize: 20,
                 fontWeight: FontWeight.bold,
               ),
             ),
 
-            const SizedBox(height: 15),
+            const SizedBox(height: 10),
 
-            ValueListenableBuilder<List<Map<String, String>>>(
-              valueListenable: reminderNotifier,
-              builder: (context, reminders, child) {
-                if (reminders.isEmpty) {
-                  return const Card(
-                    child: ListTile(
-                      leading: Icon(
-                        Icons.alarm,
-                        color: Colors.blue,
-                        size: 35,
-                      ),
-                      title: Text(
-                        'No reminders yet',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      subtitle: Text(
-                        'Add your medicine schedule',
-                      ),
-                    ),
-                  );
-                }
-
-                return Column(
-                  children: reminders.map((reminder) {
-                    return Card(
-                      elevation: 3,
-                      margin: const EdgeInsets.only(bottom: 10),
-                      child: ListTile(
-                        leading: const Icon(
-                          Icons.medication,
-                          color: Colors.blue,
-                          size: 35,
-                        ),
-                        title: Text(
-                          reminder['medicine'] ?? '',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        subtitle: Text(
-                          'Time: ${reminder['time'] ?? ''}',
-                        ),
-                        trailing: const Icon(
-                          Icons.alarm,
-                          color: Colors.orange,
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                );
-              },
-            ),
-
-            const SizedBox(height: 25),
-
-            SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: OutlinedButton.icon(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const ProfileScreen(),
-                    ),
+            Card(
+              elevation: 2,
+              child: ListTile(
+                leading: const CircleAvatar(
+                  backgroundColor: Colors.orange,
+                  child: Icon(
+                    Icons.notifications_active,
+                    color: Colors.white,
+                  ),
+                ),
+                title: const Text(
+                  'Medicine Reminders',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                subtitle: const Text(
+                  'Open Medicine Reminder to view your schedules.',
+                ),
+                trailing: const Icon(
+                  Icons.arrow_forward_ios,
+                  size: 16,
+                ),
+                onTap: () {
+                  openScreen(
+                    const MedicineReminderScreen(),
                   );
                 },
-                icon: const Icon(Icons.person),
-                label: const Text(
-                  'My Profile',
-                  style: TextStyle(fontSize: 17),
-                ),
               ),
             ),
+
+            const SizedBox(height: 15),
           ],
         ),
       ),
     );
   }
 
-  Widget dashboardCard(
-    IconData icon,
-    String title,
-    String subtitle,
-    Color color,
-  ) {
+  Widget buildFeatureCard({
+    required String title,
+    required IconData icon,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
     return Card(
-      elevation: 3,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            Icon(
-              icon,
-              size: 45,
-              color: color,
+      elevation: 2,
+      margin: EdgeInsets.zero,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: SizedBox(
+          height: 105,
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              mainAxisAlignment:
+                  MainAxisAlignment.center,
+              children: [
+
+                Icon(
+                  icon,
+                  color: color,
+                  size: 32,
+                ),
+
+                const SizedBox(height: 8),
+
+                Text(
+                  title,
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
             ),
-
-            const SizedBox(height: 10),
-
-            Text(
-              title,
-              style: const TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-
-            const SizedBox(height: 4),
-
-            Text(
-              subtitle,
-              style: const TextStyle(
-                color: Colors.grey,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
+          ),
         ),
       ),
     );
