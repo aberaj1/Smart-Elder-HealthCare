@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../services/notification_service.dart';
+
 final ValueNotifier<List<Map<String, String>>> reminderNotifier =
     ValueNotifier<List<Map<String, String>>>([]);
 
@@ -44,6 +46,10 @@ class _MedicineReminderScreenState
   bool isLoading = true;
   bool isAdding = false;
 
+  // Selected time stored directly as hour and minute.
+  int? selectedHour;
+  int? selectedMinute;
+
   @override
   void initState() {
     super.initState();
@@ -58,7 +64,9 @@ class _MedicineReminderScreenState
     super.dispose();
   }
 
-  // ================= LOAD REMINDERS =================
+  // ============================================================
+  // LOAD REMINDERS
+  // ============================================================
 
   Future<void> loadReminders() async {
     try {
@@ -78,7 +86,10 @@ class _MedicineReminderScreenState
           .collection('users')
           .doc(user.uid)
           .collection('medicine_reminders')
-          .orderBy('createdAt', descending: false)
+          .orderBy(
+            'createdAt',
+            descending: false,
+          )
           .get();
 
       final loadedReminders = <Map<String, String>>[];
@@ -86,13 +97,74 @@ class _MedicineReminderScreenState
       for (final doc in snapshot.docs) {
         final data = doc.data();
 
+        final medicine =
+            data['medicine']?.toString() ?? '';
+
+        final strength =
+            data['strength']?.toString() ?? '';
+
+        final time =
+            data['time']?.toString() ?? '';
+
+        final status =
+            data['status']?.toString() ?? 'Pending';
+
+        /*
+          New reminders store hour and minute directly.
+
+          Old reminders may only have the time string.
+          So we also support old data.
+        */
+        int? hour;
+        int? minute;
+
+        if (data['hour'] != null) {
+          hour = int.tryParse(
+            data['hour'].toString(),
+          );
+        }
+
+        if (data['minute'] != null) {
+          minute = int.tryParse(
+            data['minute'].toString(),
+          );
+        }
+
+        // Support old reminders which only have "time".
+        if ((hour == null || minute == null) &&
+            time.isNotEmpty) {
+          final parsed = parseTimeString(time);
+
+          if (parsed != null) {
+            hour = parsed.hour;
+            minute = parsed.minute;
+          }
+        }
+
         loadedReminders.add({
           'id': doc.id,
-          'medicine': data['medicine']?.toString() ?? '',
-          'strength': data['strength']?.toString() ?? '',
-          'time': data['time']?.toString() ?? '',
-          'status': data['status']?.toString() ?? 'Pending',
+          'medicine': medicine,
+          'strength': strength,
+          'time': time,
+          'status': status,
+          'hour': hour?.toString() ?? '',
+          'minute': minute?.toString() ?? '',
         });
+
+        // Schedule notification again when app opens.
+        if (medicine.isNotEmpty &&
+            strength.isNotEmpty &&
+            hour != null &&
+            minute != null) {
+          await NotificationService.instance
+              .scheduleMedicineNotification(
+            notificationId: doc.id,
+            medicine: medicine,
+            strength: strength,
+            hour: hour,
+            minute: minute,
+          );
+        }
       }
 
       if (!mounted) return;
@@ -122,12 +194,66 @@ class _MedicineReminderScreenState
     }
   }
 
-  // ================= ADD REMINDER =================
+  // ============================================================
+  // PARSE OLD TIME STRING
+  // ============================================================
+
+  TimeOfDay? parseTimeString(String time) {
+    try {
+      final parts = time.trim().split(' ');
+
+      if (parts.length != 2) {
+        return null;
+      }
+
+      final timePart = parts[0].split(':');
+
+      if (timePart.length != 2) {
+        return null;
+      }
+
+      int hour = int.parse(timePart[0]);
+      final int minute = int.parse(timePart[1]);
+
+      final period = parts[1].toUpperCase();
+
+      if (period == 'PM' && hour != 12) {
+        hour += 12;
+      }
+
+      if (period == 'AM' && hour == 12) {
+        hour = 0;
+      }
+
+      if (hour < 0 ||
+          hour > 23 ||
+          minute < 0 ||
+          minute > 59) {
+        return null;
+      }
+
+      return TimeOfDay(
+        hour: hour,
+        minute: minute,
+      );
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // ============================================================
+  // ADD REMINDER
+  // ============================================================
 
   Future<void> addReminder() async {
-    final medicine = medicineController.text.trim();
-    final strength = strengthController.text.trim();
-    final time = timeController.text.trim();
+    final medicine =
+        medicineController.text.trim();
+
+    final strength =
+        strengthController.text.trim();
+
+    final time =
+        timeController.text.trim();
 
     if (medicine.isEmpty ||
         strength.isEmpty ||
@@ -143,7 +269,21 @@ class _MedicineReminderScreenState
       return;
     }
 
-    final user = FirebaseAuth.instance.currentUser;
+    if (selectedHour == null ||
+        selectedMinute == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Please select medicine time.',
+          ),
+        ),
+      );
+
+      return;
+    }
+
+    final user =
+        FirebaseAuth.instance.currentUser;
 
     if (user == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -162,18 +302,38 @@ class _MedicineReminderScreenState
         isAdding = true;
       });
 
-      final docRef = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .collection('medicine_reminders')
-          .add({
+      final docRef =
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .collection('medicine_reminders')
+              .add({
         'medicine': medicine,
         'strength': strength,
         'time': time,
+
+        // Store exact time values.
+        'hour': selectedHour,
+        'minute': selectedMinute,
+
         'status': 'Pending',
         'statusUpdatedAt': null,
-        'createdAt': FieldValue.serverTimestamp(),
+        'createdAt':
+            FieldValue.serverTimestamp(),
       });
+
+      // ========================================================
+      // SCHEDULE NOTIFICATION
+      // ========================================================
+
+      await NotificationService.instance
+          .scheduleMedicineNotification(
+        notificationId: docRef.id,
+        medicine: medicine,
+        strength: strength,
+        hour: selectedHour!,
+        minute: selectedMinute!,
+      );
 
       if (!mounted) return;
 
@@ -184,10 +344,14 @@ class _MedicineReminderScreenState
           'strength': strength,
           'time': time,
           'status': 'Pending',
+          'hour': selectedHour!.toString(),
+          'minute': selectedMinute!.toString(),
         });
 
         reminderNotifier.value =
-            List<Map<String, String>>.from(reminders);
+            List<Map<String, String>>.from(
+          reminders,
+        );
 
         isAdding = false;
       });
@@ -196,10 +360,13 @@ class _MedicineReminderScreenState
       strengthController.clear();
       timeController.clear();
 
+      selectedHour = null;
+      selectedMinute = null;
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Medicine reminder saved successfully!',
+            'Medicine reminder saved and notification scheduled!',
           ),
         ),
       );
@@ -220,20 +387,24 @@ class _MedicineReminderScreenState
     }
   }
 
-  // ================= UPDATE MEDICINE STATUS =================
+  // ============================================================
+  // UPDATE MEDICINE STATUS
+  // ============================================================
 
   Future<void> updateMedicineStatus(
     int index,
     String status,
   ) async {
     final reminder = reminders[index];
+
     final id = reminder['id'];
 
     if (id == null || id.isEmpty) {
       return;
     }
 
-    final user = FirebaseAuth.instance.currentUser;
+    final user =
+        FirebaseAuth.instance.currentUser;
 
     if (user == null) {
       return;
@@ -247,16 +418,20 @@ class _MedicineReminderScreenState
           .doc(id)
           .update({
         'status': status,
-        'statusUpdatedAt': FieldValue.serverTimestamp(),
+        'statusUpdatedAt':
+            FieldValue.serverTimestamp(),
       });
 
       if (!mounted) return;
 
       setState(() {
-        reminders[index]['status'] = status;
+        reminders[index]['status'] =
+            status;
 
         reminderNotifier.value =
-            List<Map<String, String>>.from(reminders);
+            List<Map<String, String>>.from(
+          reminders,
+        );
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -279,23 +454,33 @@ class _MedicineReminderScreenState
     }
   }
 
-  // ================= DELETE REMINDER =================
+  // ============================================================
+  // DELETE REMINDER
+  // ============================================================
 
-  Future<void> deleteReminder(int index) async {
+  Future<void> deleteReminder(
+    int index,
+  ) async {
     final reminder = reminders[index];
+
     final id = reminder['id'];
 
     if (id == null || id.isEmpty) {
       return;
     }
 
-    final user = FirebaseAuth.instance.currentUser;
+    final user =
+        FirebaseAuth.instance.currentUser;
 
     if (user == null) {
       return;
     }
 
     try {
+      // Cancel notification.
+      await NotificationService.instance
+          .cancelNotification(id);
+
       await FirebaseFirestore.instance
           .collection('users')
           .doc(user.uid)
@@ -309,7 +494,9 @@ class _MedicineReminderScreenState
         reminders.removeAt(index);
 
         reminderNotifier.value =
-            List<Map<String, String>>.from(reminders);
+            List<Map<String, String>>.from(
+          reminders,
+        );
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -332,7 +519,9 @@ class _MedicineReminderScreenState
     }
   }
 
-  // ================= SELECT TIME =================
+  // ============================================================
+  // SELECT TIME
+  // ============================================================
 
   Future<void> selectTime() async {
     final TimeOfDay? selectedTime =
@@ -343,15 +532,22 @@ class _MedicineReminderScreenState
 
     if (selectedTime != null) {
       setState(() {
+        selectedHour = selectedTime.hour;
+        selectedMinute = selectedTime.minute;
+
         timeController.text =
             selectedTime.format(context);
       });
     }
   }
 
-  // ================= STATUS COLOR =================
+  // ============================================================
+  // STATUS COLOR
+  // ============================================================
 
-  Color getStatusColor(String status) {
+  Color getStatusColor(
+    String status,
+  ) {
     if (status == 'Taken') {
       return Colors.green;
     }
@@ -363,7 +559,9 @@ class _MedicineReminderScreenState
     return Colors.orange;
   }
 
-  // ================= BUILD =================
+  // ============================================================
+  // BUILD
+  // ============================================================
 
   @override
   Widget build(BuildContext context) {
@@ -375,9 +573,9 @@ class _MedicineReminderScreenState
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
       ),
-
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+        padding:
+            const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment:
               CrossAxisAlignment.start,
@@ -386,62 +584,76 @@ class _MedicineReminderScreenState
               'Add Medicine',
               style: TextStyle(
                 fontSize: 24,
-                fontWeight: FontWeight.bold,
+                fontWeight:
+                    FontWeight.bold,
               ),
             ),
 
             const SizedBox(height: 20),
 
-            // Medicine Name
+            // ==================================================
+            // MEDICINE NAME
+            // ==================================================
+
             Autocomplete<String>(
               optionsBuilder:
                   (TextEditingValue value) {
                 if (value.text.isEmpty) {
-                  return const Iterable<String>.empty();
+                  return const Iterable<
+                      String>.empty();
                 }
 
-                return medicineSuggestions.where(
-                  (medicine) => medicine
-                      .toLowerCase()
-                      .contains(
-                        value.text.toLowerCase(),
-                      ),
+                return medicineSuggestions
+                    .where(
+                  (medicine) =>
+                      medicine
+                          .toLowerCase()
+                          .contains(
+                            value.text
+                                .toLowerCase(),
+                          ),
                 );
               },
-
-              onSelected: (String value) {
-                medicineController.text = value;
+              onSelected:
+                  (String value) {
+                medicineController
+                    .text = value;
               },
-
               fieldViewBuilder: (
                 context,
                 controller,
                 focusNode,
                 onFieldSubmitted,
               ) {
-                if (medicineController.text.isNotEmpty &&
+                if (medicineController
+                        .text.isNotEmpty &&
                     controller.text.isEmpty) {
                   controller.text =
-                      medicineController.text;
+                      medicineController
+                          .text;
                 }
 
                 return TextField(
-                  controller: controller,
-                  focusNode: focusNode,
-
+                  controller:
+                      controller,
+                  focusNode:
+                      focusNode,
                   onChanged: (value) {
-                    medicineController.text = value;
+                    medicineController
+                        .text = value;
                   },
-
                   decoration:
                       const InputDecoration(
-                    labelText: 'Medicine Name',
+                    labelText:
+                        'Medicine Name',
                     hintText:
                         'Enter medicine name',
                     border:
                         OutlineInputBorder(),
                     prefixIcon:
-                        Icon(Icons.medication),
+                        Icon(
+                      Icons.medication,
+                    ),
                   ),
                 );
               },
@@ -449,9 +661,13 @@ class _MedicineReminderScreenState
 
             const SizedBox(height: 15),
 
-            // Strength
+            // ==================================================
+            // STRENGTH
+            // ==================================================
+
             TextField(
-              controller: strengthController,
+              controller:
+                  strengthController,
               keyboardType:
                   TextInputType.text,
               decoration:
@@ -468,32 +684,45 @@ class _MedicineReminderScreenState
 
             const SizedBox(height: 15),
 
-            // Time
+            // ==================================================
+            // TIME
+            // ==================================================
+
             TextField(
-              controller: timeController,
+              controller:
+                  timeController,
               readOnly: true,
               onTap: selectTime,
               decoration:
                   const InputDecoration(
-                labelText: 'Medicine Time',
+                labelText:
+                    'Medicine Time',
                 hintText:
                     'Select time',
                 border:
                     OutlineInputBorder(),
                 prefixIcon:
-                    Icon(Icons.access_time),
+                    Icon(
+                  Icons.access_time,
+                ),
               ),
             ),
 
             const SizedBox(height: 20),
 
-            // Add Button
+            // ==================================================
+            // ADD BUTTON
+            // ==================================================
+
             SizedBox(
               width: double.infinity,
               height: 50,
-              child: ElevatedButton.icon(
+              child:
+                  ElevatedButton.icon(
                 onPressed:
-                    isAdding ? null : addReminder,
+                    isAdding
+                        ? null
+                        : addReminder,
                 icon: isAdding
                     ? const SizedBox(
                         width: 20,
@@ -501,10 +730,13 @@ class _MedicineReminderScreenState
                         child:
                             CircularProgressIndicator(
                           strokeWidth: 2,
-                          color: Colors.white,
+                          color:
+                              Colors.white,
                         ),
                       )
-                    : const Icon(Icons.add),
+                    : const Icon(
+                        Icons.add,
+                      ),
                 label: Text(
                   isAdding
                       ? 'Saving...'
@@ -515,11 +747,16 @@ class _MedicineReminderScreenState
 
             const SizedBox(height: 30),
 
+            // ==================================================
+            // MY REMINDERS
+            // ==================================================
+
             const Text(
               'My Reminders',
               style: TextStyle(
                 fontSize: 22,
-                fontWeight: FontWeight.bold,
+                fontWeight:
+                    FontWeight.bold,
               ),
             ),
 
@@ -528,7 +765,8 @@ class _MedicineReminderScreenState
             if (isLoading)
               const Center(
                 child: Padding(
-                  padding: EdgeInsets.all(20),
+                  padding:
+                      EdgeInsets.all(20),
                   child:
                       CircularProgressIndicator(),
                 ),
@@ -553,7 +791,8 @@ class _MedicineReminderScreenState
                 shrinkWrap: true,
                 physics:
                     const NeverScrollableScrollPhysics(),
-                itemCount: reminders.length,
+                itemCount:
+                    reminders.length,
                 itemBuilder:
                     (context, index) {
                   final reminder =
@@ -564,7 +803,9 @@ class _MedicineReminderScreenState
                           'Pending';
 
                   final statusColor =
-                      getStatusColor(status);
+                      getStatusColor(
+                    status,
+                  );
 
                   return Card(
                     elevation: 3,
@@ -574,55 +815,61 @@ class _MedicineReminderScreenState
                     ),
                     child: Padding(
                       padding:
-                          const EdgeInsets.all(12),
+                          const EdgeInsets.all(
+                        12,
+                      ),
                       child: Column(
                         children: [
                           ListTile(
                             contentPadding:
                                 EdgeInsets.zero,
-
                             leading:
                                 const Icon(
                               Icons.medication,
-                              color: Colors.blue,
+                              color:
+                                  Colors.blue,
                               size: 40,
                             ),
-
                             title: Text(
-                              reminder['medicine'] ??
+                              reminder[
+                                      'medicine'] ??
                                   '',
                               style:
                                   const TextStyle(
                                 fontWeight:
-                                    FontWeight.bold,
+                                    FontWeight
+                                        .bold,
                                 fontSize: 18,
                               ),
                             ),
-
                             subtitle: Text(
                               'Strength: ${reminder['strength'] ?? ''}\n'
                               'Time: ${reminder['time'] ?? ''}',
                             ),
-
-                            isThreeLine: true,
-
+                            isThreeLine:
+                                true,
                             trailing:
                                 IconButton(
                               icon:
                                   const Icon(
                                 Icons.delete,
-                                color: Colors.red,
+                                color:
+                                    Colors.red,
                               ),
                               onPressed: () {
                                 deleteReminder(
-                                    index);
+                                  index,
+                                );
                               },
                             ),
                           ),
 
                           const Divider(),
 
-                          // Status
+                          // ==================================================
+                          // STATUS
+                          // ==================================================
+
                           Row(
                             children: [
                               const Text(
@@ -630,50 +877,62 @@ class _MedicineReminderScreenState
                                 style:
                                     TextStyle(
                                   fontWeight:
-                                      FontWeight.bold,
+                                      FontWeight
+                                          .bold,
                                 ),
                               ),
-
                               Container(
                                 padding:
                                     const EdgeInsets
                                         .symmetric(
-                                  horizontal: 10,
+                                  horizontal:
+                                      10,
                                   vertical: 5,
                                 ),
                                 decoration:
                                     BoxDecoration(
-                                  color: statusColor
-                                      .withOpacity(
-                                          0.1),
+                                  color:
+                                      statusColor
+                                          .withOpacity(
+                                    0.1,
+                                  ),
                                   borderRadius:
                                       BorderRadius
                                           .circular(
-                                              20),
+                                    20,
+                                  ),
                                 ),
                                 child: Text(
                                   status,
-                                  style: TextStyle(
+                                  style:
+                                      TextStyle(
                                     color:
                                         statusColor,
                                     fontWeight:
-                                        FontWeight.bold,
+                                        FontWeight
+                                            .bold,
                                   ),
                                 ),
                               ),
                             ],
                           ),
 
-                          const SizedBox(height: 10),
+                          const SizedBox(
+                            height: 10,
+                          ),
 
-                          // Taken / Missed
+                          // ==================================================
+                          // TAKEN / MISSED
+                          // ==================================================
+
                           Row(
                             children: [
                               Expanded(
                                 child:
                                     ElevatedButton
                                         .icon(
-                                  onPressed: () {
+                                  onPressed:
+                                      () {
                                     updateMedicineStatus(
                                       index,
                                       'Taken',
@@ -692,9 +951,11 @@ class _MedicineReminderScreenState
                                       ElevatedButton
                                           .styleFrom(
                                     backgroundColor:
-                                        Colors.green,
+                                        Colors
+                                            .green,
                                     foregroundColor:
-                                        Colors.white,
+                                        Colors
+                                            .white,
                                   ),
                                 ),
                               ),
@@ -707,7 +968,8 @@ class _MedicineReminderScreenState
                                 child:
                                     ElevatedButton
                                         .icon(
-                                  onPressed: () {
+                                  onPressed:
+                                      () {
                                     updateMedicineStatus(
                                       index,
                                       'Missed',
@@ -726,9 +988,11 @@ class _MedicineReminderScreenState
                                       ElevatedButton
                                           .styleFrom(
                                     backgroundColor:
-                                        Colors.red,
+                                        Colors
+                                            .red,
                                     foregroundColor:
-                                        Colors.white,
+                                        Colors
+                                            .white,
                                   ),
                                 ),
                               ),

@@ -22,8 +22,10 @@ dependencies:
   # OCR and Camera
   image_picker: ^1.1.2
   google_mlkit_text_recognition: ^0.15.0
+  flutter_local_notifications: ^19.4.2
 
 dev_dependencies:
+  timezone: ^0.10.1
   flutter_test:
     sdk: flutter
 
