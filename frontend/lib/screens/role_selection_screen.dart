@@ -9,10 +9,12 @@ class RoleSelectionScreen extends StatefulWidget {
   const RoleSelectionScreen({super.key});
 
   @override
-  State<RoleSelectionScreen> createState() => _RoleSelectionScreenState();
+  State<RoleSelectionScreen> createState() =>
+      _RoleSelectionScreenState();
 }
 
-class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
+class _RoleSelectionScreenState
+    extends State<RoleSelectionScreen> {
   bool isLoading = false;
 
   void _showMessage(String message) {
@@ -24,11 +26,14 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
   }
 
   Future<void> _selectRole(String role) async {
-    final user = FirebaseAuth.instance.currentUser;
+    final user =
+        FirebaseAuth.instance.currentUser;
 
     // Check whether user is logged in
     if (user == null) {
-      _showMessage('User not logged in. Please login again.');
+      _showMessage(
+        'User not logged in. Please login again.',
+      );
       return;
     }
 
@@ -38,6 +43,8 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
 
     try {
       // Save selected role in Firestore
+      // IMPORTANT:
+      // Keep the internal role value as "caregiver".
       await FirebaseFirestore.instance
           .collection('users')
           .doc(user.uid)
@@ -52,24 +59,30 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (context) => const ElderDashboardScreen(),
+            builder: (context) =>
+                const ElderDashboardScreen(),
           ),
         );
       } else if (role == 'caregiver') {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (context) => const CaregiverDashboardScreen(),
+            builder: (context) =>
+                const CaregiverDashboardScreen(),
           ),
         );
       }
     } on FirebaseException catch (e) {
       if (mounted) {
-        _showMessage('Database error: ${e.message}');
+        _showMessage(
+          'Database error: ${e.message}',
+        );
       }
     } catch (e) {
       if (mounted) {
-        _showMessage('Something went wrong: $e');
+        _showMessage(
+          'Something went wrong: $e',
+        );
       }
     } finally {
       if (mounted) {
@@ -84,14 +97,20 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Select Your Role'),
+        title: const Text(
+          'Select Your Role',
+        ),
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
       ),
+
       body: Padding(
         padding: const EdgeInsets.all(20),
+
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisAlignment:
+              MainAxisAlignment.center,
+
           children: [
             const Icon(
               Icons.health_and_safety,
@@ -99,17 +118,22 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
               color: Colors.blue,
             ),
 
-            const SizedBox(height: 20),
+            const SizedBox(
+              height: 20,
+            ),
 
             const Text(
               'Who are you?',
               style: TextStyle(
                 fontSize: 28,
-                fontWeight: FontWeight.bold,
+                fontWeight:
+                    FontWeight.bold,
               ),
             ),
 
-            const SizedBox(height: 10),
+            const SizedBox(
+              height: 10,
+            ),
 
             const Text(
               'Select your role to continue',
@@ -119,33 +143,49 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
               ),
             ),
 
-            const SizedBox(height: 40),
+            const SizedBox(
+              height: 40,
+            ),
 
-            // Elder button
+            // ==================================================
+            // ELDER BUTTON
+            // ==================================================
+
             SizedBox(
               width: double.infinity,
               height: 100,
+
               child: ElevatedButton(
                 onPressed: isLoading
                     ? null
                     : () {
-                        _selectRole('elder');
+                        _selectRole(
+                          'elder',
+                        );
                       },
+
                 child: isLoading
                     ? const CircularProgressIndicator()
                     : const Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisAlignment:
+                            MainAxisAlignment.center,
+
                         children: [
                           Icon(
                             Icons.elderly,
                             size: 40,
                           ),
-                          SizedBox(width: 15),
+
+                          SizedBox(
+                            width: 15,
+                          ),
+
                           Text(
                             'I am an Elder',
                             style: TextStyle(
                               fontSize: 20,
-                              fontWeight: FontWeight.bold,
+                              fontWeight:
+                                  FontWeight.bold,
                             ),
                           ),
                         ],
@@ -153,37 +193,59 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
               ),
             ),
 
-            const SizedBox(height: 20),
+            const SizedBox(
+              height: 20,
+            ),
 
-            // Caregiver button
+            // ==================================================
+            // CARETAKER BUTTON
+            // ==================================================
+
             SizedBox(
               width: double.infinity,
               height: 100,
+
               child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  foregroundColor: Colors.white,
+                style:
+                    ElevatedButton.styleFrom(
+                  backgroundColor:
+                      Colors.green,
+                  foregroundColor:
+                      Colors.white,
                 ),
+
                 onPressed: isLoading
                     ? null
                     : () {
-                        _selectRole('caregiver');
+                        // Internal Firebase role
+                        // remains "caregiver"
+                        _selectRole(
+                          'caregiver',
+                        );
                       },
+
                 child: isLoading
                     ? const CircularProgressIndicator()
                     : const Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisAlignment:
+                            MainAxisAlignment.center,
+
                         children: [
                           Icon(
                             Icons.health_and_safety,
                             size: 40,
                           ),
-                          SizedBox(width: 15),
+
+                          SizedBox(
+                            width: 15,
+                          ),
+
                           Text(
-                            'I am a Caregiver',
+                            'I am a Caretaker',
                             style: TextStyle(
                               fontSize: 20,
-                              fontWeight: FontWeight.bold,
+                              fontWeight:
+                                  FontWeight.bold,
                             ),
                           ),
                         ],

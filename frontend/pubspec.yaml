@@ -9,6 +9,7 @@ environment:
   sdk: ^3.12.2
 
 dependencies:
+  url_launcher: ^6.3.2  
   flutter:
     sdk: flutter
 
@@ -23,6 +24,7 @@ dependencies:
   image_picker: ^1.1.2
   google_mlkit_text_recognition: ^0.15.0
   flutter_local_notifications: ^19.4.2
+  flutter_launcher_icons: ^0.14.4
 
 dev_dependencies:
   timezone: ^0.10.1
@@ -33,3 +35,8 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/app_icon.png"

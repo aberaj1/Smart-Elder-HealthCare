@@ -1,28 +1,71 @@
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+
+import '../services/healthcare_owner_service.dart';
 
 class MedicineStockScreen extends StatefulWidget {
   const MedicineStockScreen({super.key});
 
   @override
-  State<MedicineStockScreen> createState() => _MedicineStockScreenState();
+  State<MedicineStockScreen> createState() =>
+      _MedicineStockScreenState();
 }
 
 class _MedicineStockScreenState extends State<MedicineStockScreen> {
-  final TextEditingController medicineController = TextEditingController();
-  final TextEditingController quantityController = TextEditingController();
+  final TextEditingController medicineController =
+      TextEditingController();
+  final TextEditingController quantityController =
+      TextEditingController();
 
   DateTime? selectedExpiryDate;
-  bool isLoading = false;
+  String? dataOwnerUid;
+  String? ownerError;
+
+  bool isLoadingOwner = true;
+  bool isSaving = false;
 
   User? get currentUser => FirebaseAuth.instance.currentUser;
 
   CollectionReference<Map<String, dynamic>> get stockCollection {
+    if (dataOwnerUid == null) {
+      throw StateError('Medicine stock owner is not loaded.');
+    }
+
     return FirebaseFirestore.instance
         .collection('users')
-        .doc(currentUser!.uid)
+        .doc(dataOwnerUid!)
         .collection('medicine_stock');
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    loadDataOwner();
+  }
+
+  Future<void> loadDataOwner() async {
+    try {
+      final uid =
+          await HealthcareOwnerService.getDataOwnerUid();
+
+      if (!mounted) return;
+
+      setState(() {
+        dataOwnerUid = uid;
+        ownerError = null;
+        isLoadingOwner = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        ownerError =
+            e.toString().replaceFirst('Exception: ', '');
+        isLoadingOwner = false;
+      });
+    }
   }
 
   @override
@@ -32,49 +75,56 @@ class _MedicineStockScreenState extends State<MedicineStockScreen> {
     super.dispose();
   }
 
-  Future<void> selectExpiryDate() async {
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: DateTime.now(),
+  Future<void> selectExpiryDate(
+    BuildContext dialogContext,
+    StateSetter setDialogState,
+  ) async {
+    final picked = await showDatePicker(
+      context: dialogContext,
+      initialDate: selectedExpiryDate ?? DateTime.now(),
       firstDate: DateTime.now(),
       lastDate: DateTime(2100),
     );
 
-    if (picked != null) {
+    if (picked != null && mounted) {
       setState(() {
         selectedExpiryDate = picked;
       });
+      setDialogState(() {});
     }
   }
 
-  Future<void> addMedicineStock() async {
+  Future<void> saveMedicineStock(
+    BuildContext dialogContext,
+    StateSetter setDialogState,
+  ) async {
     final medicineName = medicineController.text.trim();
     final quantityText = quantityController.text.trim();
 
     if (medicineName.isEmpty || quantityText.isEmpty) {
-      showMessage("Please enter medicine name and quantity");
+      showMessage('Please enter medicine name and quantity.');
       return;
     }
 
-    final int? quantity = int.tryParse(quantityText);
+    final quantity = int.tryParse(quantityText);
 
     if (quantity == null || quantity < 0) {
-      showMessage("Please enter a valid quantity");
+      showMessage('Please enter a valid quantity.');
       return;
     }
 
     if (selectedExpiryDate == null) {
-      showMessage("Please select expiry date");
+      showMessage('Please select expiry date.');
       return;
     }
 
-    if (currentUser == null) {
-      showMessage("User not logged in");
+    if (currentUser == null || dataOwnerUid == null) {
+      showMessage('Please login and load the linked account.');
       return;
     }
 
-    setState(() {
-      isLoading = true;
+    setDialogState(() {
+      isSaving = true;
     });
 
     try {
@@ -82,29 +132,29 @@ class _MedicineStockScreenState extends State<MedicineStockScreen> {
         'medicineName': medicineName,
         'quantity': quantity,
         'expiryDate': Timestamp.fromDate(selectedExpiryDate!),
-        'userId': currentUser!.uid,
+        'userId': dataOwnerUid,
+        'createdByUid': currentUser!.uid,
+        'lowStockNotified': false,
         'createdAt': FieldValue.serverTimestamp(),
       });
+
+      if (!mounted) return;
 
       medicineController.clear();
       quantityController.clear();
 
       setState(() {
         selectedExpiryDate = null;
-        isLoading = false;
       });
 
-      if (mounted) {
-        Navigator.pop(context);
-      }
-
-      showMessage("Medicine stock added successfully");
+      Navigator.of(dialogContext).pop();
+      showMessage('Medicine stock added successfully.');
     } catch (e) {
-      setState(() {
-        isLoading = false;
+      setDialogState(() {
+        isSaving = false;
       });
 
-      showMessage("Error: $e");
+      showMessage('Error adding stock: $e');
     }
   }
 
@@ -113,28 +163,36 @@ class _MedicineStockScreenState extends State<MedicineStockScreen> {
     int currentQuantity,
     int change,
   ) async {
-    int newQuantity = currentQuantity + change;
-
-    if (newQuantity < 0) {
-      newQuantity = 0;
+    if (dataOwnerUid == null) {
+      showMessage('Account details are not loaded.');
+      return;
     }
+
+    final newQuantity = currentQuantity + change;
+
+    if (newQuantity < 0) return;
 
     try {
       await stockCollection.doc(documentId).update({
         'quantity': newQuantity,
+        'lowStockNotified': false,
       });
     } catch (e) {
-      showMessage("Unable to update stock");
+      showMessage('Unable to update stock: $e');
     }
   }
 
   Future<void> deleteMedicine(String documentId) async {
+    if (dataOwnerUid == null) {
+      showMessage('Account details are not loaded.');
+      return;
+    }
+
     try {
       await stockCollection.doc(documentId).delete();
-
-      showMessage("Medicine deleted");
+      showMessage('Medicine deleted.');
     } catch (e) {
-      showMessage("Unable to delete medicine");
+      showMessage('Unable to delete medicine: $e');
     }
   }
 
@@ -144,16 +202,17 @@ class _MedicineStockScreenState extends State<MedicineStockScreen> {
 
     setState(() {
       selectedExpiryDate = null;
+      isSaving = false;
     });
 
-    showDialog(
+    showDialog<void>(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
               title: const Text(
-                "Add Medicine Stock",
+                'Add Medicine Stock',
                 style: TextStyle(fontWeight: FontWeight.bold),
               ),
               content: SingleChildScrollView(
@@ -162,9 +221,10 @@ class _MedicineStockScreenState extends State<MedicineStockScreen> {
                   children: [
                     TextField(
                       controller: medicineController,
+                      textCapitalization: TextCapitalization.words,
                       decoration: const InputDecoration(
-                        labelText: "Medicine Name",
-                        hintText: "Example: Paracetamol",
+                        labelText: 'Medicine Name',
+                        hintText: 'Example: Paracetamol',
                         prefixIcon: Icon(Icons.medication),
                         border: OutlineInputBorder(),
                       ),
@@ -174,28 +234,20 @@ class _MedicineStockScreenState extends State<MedicineStockScreen> {
                       controller: quantityController,
                       keyboardType: TextInputType.number,
                       decoration: const InputDecoration(
-                        labelText: "Quantity",
-                        hintText: "Example: 10",
+                        labelText: 'Quantity',
+                        hintText: 'Example: 10',
                         prefixIcon: Icon(Icons.inventory),
                         border: OutlineInputBorder(),
                       ),
                     ),
                     const SizedBox(height: 15),
                     InkWell(
-                      onTap: () async {
-                        final DateTime? picked = await showDatePicker(
-                          context: context,
-                          initialDate: DateTime.now(),
-                          firstDate: DateTime.now(),
-                          lastDate: DateTime(2100),
-                        );
-
-                        if (picked != null) {
-                          setDialogState(() {
-                            selectedExpiryDate = picked;
-                          });
-                        }
-                      },
+                      onTap: isSaving
+                          ? null
+                          : () => selectExpiryDate(
+                                dialogContext,
+                                setDialogState,
+                              ),
                       child: Container(
                         width: double.infinity,
                         padding: const EdgeInsets.all(15),
@@ -210,10 +262,10 @@ class _MedicineStockScreenState extends State<MedicineStockScreen> {
                             Expanded(
                               child: Text(
                                 selectedExpiryDate == null
-                                    ? "Select Expiry Date"
-                                    : "${selectedExpiryDate!.day.toString().padLeft(2, '0')}/"
-                                      "${selectedExpiryDate!.month.toString().padLeft(2, '0')}/"
-                                      "${selectedExpiryDate!.year}",
+                                    ? 'Select Expiry Date'
+                                    : '${selectedExpiryDate!.day.toString().padLeft(2, '0')}/'
+                                        '${selectedExpiryDate!.month.toString().padLeft(2, '0')}/'
+                                        '${selectedExpiryDate!.year}',
                               ),
                             ),
                           ],
@@ -225,83 +277,27 @@ class _MedicineStockScreenState extends State<MedicineStockScreen> {
               ),
               actions: [
                 TextButton(
-                  onPressed: () {
-                    Navigator.pop(context);
-                  },
-                  child: const Text("Cancel"),
+                  onPressed: isSaving
+                      ? null
+                      : () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Cancel'),
                 ),
                 ElevatedButton(
-                  onPressed: isLoading
+                  onPressed: isSaving
                       ? null
-                      : () async {
-                          final medicineName =
-                              medicineController.text.trim();
-                          final quantityText =
-                              quantityController.text.trim();
-
-                          if (medicineName.isEmpty ||
-                              quantityText.isEmpty ||
-                              selectedExpiryDate == null) {
-                            showMessage(
-                              "Please fill all details",
-                            );
-                            return;
-                          }
-
-                          final quantity = int.tryParse(quantityText);
-
-                          if (quantity == null || quantity < 0) {
-                            showMessage(
-                              "Enter a valid quantity",
-                            );
-                            return;
-                          }
-
-                          if (currentUser == null) {
-                            showMessage(
-                              "User not logged in",
-                            );
-                            return;
-                          }
-
-                          setDialogState(() {
-                            isLoading = true;
-                          });
-
-                          try {
-                            await stockCollection.add({
-                              'medicineName': medicineName,
-                              'quantity': quantity,
-                              'expiryDate':
-                                  Timestamp.fromDate(selectedExpiryDate!),
-                              'userId': currentUser!.uid,
-                              'createdAt':
-                                  FieldValue.serverTimestamp(),
-                            });
-
-                            if (mounted) {
-                              Navigator.pop(context);
-                              showMessage(
-                                "Medicine stock added successfully",
-                              );
-                            }
-                          } catch (e) {
-                            setDialogState(() {
-                              isLoading = false;
-                            });
-
-                            showMessage("Error adding medicine");
-                          }
-                        },
-                  child: isLoading
+                      : () => saveMedicineStock(
+                            dialogContext,
+                            setDialogState,
+                          ),
+                  child: isSaving
                       ? const SizedBox(
-                          height: 20,
                           width: 20,
+                          height: 20,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
                           ),
                         )
-                      : const Text("Add"),
+                      : const Text('Add'),
                 ),
               ],
             );
@@ -312,27 +308,20 @@ class _MedicineStockScreenState extends State<MedicineStockScreen> {
   }
 
   String formatDate(Timestamp? timestamp) {
-    if (timestamp == null) {
-      return "No expiry date";
-    }
+    if (timestamp == null) return 'No expiry date';
 
     final date = timestamp.toDate();
 
-    return "${date.day.toString().padLeft(2, '0')}/"
-        "${date.month.toString().padLeft(2, '0')}/"
-        "${date.year}";
+    return '${date.day.toString().padLeft(2, '0')}/'
+        '${date.month.toString().padLeft(2, '0')}/'
+        '${date.year}';
   }
 
   bool isExpired(Timestamp? timestamp) {
     if (timestamp == null) return false;
 
     final expiryDate = timestamp.toDate();
-
-    final today = DateTime(
-      DateTime.now().year,
-      DateTime.now().month,
-      DateTime.now().day,
-    );
+    final today = DateTime.now();
 
     final expiry = DateTime(
       expiryDate.year,
@@ -340,16 +329,20 @@ class _MedicineStockScreenState extends State<MedicineStockScreen> {
       expiryDate.day,
     );
 
-    return expiry.isBefore(today);
+    final todayDate = DateTime(
+      today.year,
+      today.month,
+      today.day,
+    );
+
+    return expiry.isBefore(todayDate);
   }
 
   void showMessage(String message) {
     if (!mounted) return;
 
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-      ),
+      SnackBar(content: Text(message)),
     );
   }
 
@@ -357,11 +350,45 @@ class _MedicineStockScreenState extends State<MedicineStockScreen> {
   Widget build(BuildContext context) {
     if (currentUser == null) {
       return Scaffold(
-        appBar: AppBar(
-          title: const Text("Medicine Stock"),
-        ),
-        body: const Center(
-          child: Text("Please login first"),
+        appBar: AppBar(title: const Text('Medicine Stock')),
+        body: const Center(child: Text('Please login first')),
+      );
+    }
+
+    if (isLoadingOwner) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Medicine Stock')),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (dataOwnerUid == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Medicine Stock')),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  ownerError ?? 'Unable to load account details.',
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 12),
+                ElevatedButton(
+                  onPressed: () {
+                    setState(() {
+                      isLoadingOwner = true;
+                      ownerError = null;
+                    });
+                    loadDataOwner();
+                  },
+                  child: const Text('Retry'),
+                ),
+              ],
+            ),
+          ),
         ),
       );
     }
@@ -369,37 +396,32 @@ class _MedicineStockScreenState extends State<MedicineStockScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text(
-          "Medicine Stock",
+          'Medicine Stock',
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
       ),
-
       floatingActionButton: FloatingActionButton.extended(
         onPressed: showAddStockDialog,
         icon: const Icon(Icons.add),
-        label: const Text("Add Medicine"),
+        label: const Text('Add Medicine'),
       ),
-
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
         stream: stockCollection
-            .orderBy(
-              'createdAt',
-              descending: true,
-            )
+            .orderBy('createdAt', descending: true)
             .snapshots(),
-
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(
-              child: CircularProgressIndicator(),
-            );
+            return const Center(child: CircularProgressIndicator());
           }
 
           if (snapshot.hasError) {
             return Center(
-              child: Text(
-                "Error loading stock\n${snapshot.error}",
-                textAlign: TextAlign.center,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(
+                  'Error loading stock:\n${snapshot.error}',
+                  textAlign: TextAlign.center,
+                ),
               ),
             );
           }
@@ -418,16 +440,14 @@ class _MedicineStockScreenState extends State<MedicineStockScreen> {
                   ),
                   SizedBox(height: 15),
                   Text(
-                    "No medicine stock added",
+                    'No medicine stock added',
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
                   SizedBox(height: 8),
-                  Text(
-                    "Tap + Add Medicine to add stock",
-                  ),
+                  Text('Tap + Add Medicine to add stock'),
                 ],
               ),
             );
@@ -440,17 +460,21 @@ class _MedicineStockScreenState extends State<MedicineStockScreen> {
               final doc = documents[index];
               final data = doc.data();
 
-              final String medicineName =
-                  data['medicineName'] ?? "Unknown Medicine";
+              final medicineName =
+                  data['medicineName']?.toString() ??
+                      'Unknown Medicine';
 
-              final int quantity =
-                  (data['quantity'] ?? 0) as int;
+              final quantityValue = data['quantity'];
+              final quantity = quantityValue is num
+                  ? quantityValue.toInt()
+                  : int.tryParse('$quantityValue') ?? 0;
 
-              final Timestamp? expiryDate =
-                  data['expiryDate'] as Timestamp?;
+              final expiryDate = data['expiryDate'] is Timestamp
+                  ? data['expiryDate'] as Timestamp
+                  : null;
 
-              final bool lowStock = quantity <= 5;
-              final bool expired = isExpired(expiryDate);
+              final lowStock = quantity <= 5;
+              final expired = isExpired(expiryDate);
 
               return Card(
                 margin: const EdgeInsets.only(bottom: 14),
@@ -464,8 +488,7 @@ class _MedicineStockScreenState extends State<MedicineStockScreen> {
                           Container(
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
-                              borderRadius:
-                                  BorderRadius.circular(12),
+                              borderRadius: BorderRadius.circular(12),
                               color: Colors.blue.shade50,
                             ),
                             child: const Icon(
@@ -474,9 +497,7 @@ class _MedicineStockScreenState extends State<MedicineStockScreen> {
                               color: Colors.blue,
                             ),
                           ),
-
                           const SizedBox(width: 15),
-
                           Expanded(
                             child: Column(
                               crossAxisAlignment:
@@ -489,107 +510,55 @@ class _MedicineStockScreenState extends State<MedicineStockScreen> {
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),
-
                                 const SizedBox(height: 6),
-
                                 Text(
-                                  "Expiry: ${formatDate(expiryDate)}",
+                                  'Expiry: ${formatDate(expiryDate)}',
                                   style: TextStyle(
                                     color: expired
                                         ? Colors.red
                                         : Colors.grey.shade700,
                                   ),
                                 ),
-
                                 const SizedBox(height: 6),
-
-                                Row(
+                                Wrap(
+                                  spacing: 8,
+                                  runSpacing: 5,
+                                  crossAxisAlignment:
+                                      WrapCrossAlignment.center,
                                   children: [
                                     Text(
-                                      "Stock: $quantity",
+                                      'Stock: $quantity',
                                       style: TextStyle(
-                                        fontWeight:
-                                            FontWeight.bold,
+                                        fontWeight: FontWeight.bold,
                                         color: lowStock
                                             ? Colors.red
                                             : Colors.green,
                                       ),
                                     ),
-
-                                    const SizedBox(width: 8),
-
                                     if (lowStock)
-                                      Container(
-                                        padding:
-                                            const EdgeInsets
-                                                .symmetric(
-                                          horizontal: 8,
-                                          vertical: 3,
-                                        ),
-                                        decoration:
-                                            BoxDecoration(
-                                          color:
-                                              Colors.red.shade50,
-                                          borderRadius:
-                                              BorderRadius
-                                                  .circular(8),
-                                        ),
-                                        child: const Text(
-                                          "Low Stock",
-                                          style: TextStyle(
-                                            color: Colors.red,
-                                            fontSize: 12,
-                                            fontWeight:
-                                                FontWeight.bold,
-                                          ),
-                                        ),
+                                      _statusLabel(
+                                        'Low Stock',
+                                        Colors.red,
                                       ),
-
                                     if (expired)
-                                      Container(
-                                        margin:
-                                            const EdgeInsets.only(
-                                          left: 5,
-                                        ),
-                                        padding:
-                                            const EdgeInsets
-                                                .symmetric(
-                                          horizontal: 8,
-                                          vertical: 3,
-                                        ),
-                                        decoration:
-                                            BoxDecoration(
-                                          color:
-                                              Colors.red.shade50,
-                                          borderRadius:
-                                              BorderRadius
-                                                  .circular(8),
-                                        ),
-                                        child: const Text(
-                                          "Expired",
-                                          style: TextStyle(
-                                            color: Colors.red,
-                                            fontSize: 12,
-                                            fontWeight:
-                                                FontWeight.bold,
-                                          ),
-                                        ),
+                                      _statusLabel(
+                                        'Expired',
+                                        Colors.red,
                                       ),
                                   ],
                                 ),
                               ],
                             ),
                           ),
-
                           PopupMenuButton<String>(
                             onSelected: (value) {
-                              if (value == "delete") {
+                              if (value == 'delete') {
                                 deleteMedicine(doc.id);
                               }
                             },
                             itemBuilder: (context) => [
                               const PopupMenuItem(
-                                value: "delete",
+                                value: 'delete',
                                 child: Row(
                                   children: [
                                     Icon(
@@ -597,7 +566,7 @@ class _MedicineStockScreenState extends State<MedicineStockScreen> {
                                       color: Colors.red,
                                     ),
                                     SizedBox(width: 8),
-                                    Text("Delete"),
+                                    Text('Delete'),
                                   ],
                                 ),
                               ),
@@ -605,60 +574,47 @@ class _MedicineStockScreenState extends State<MedicineStockScreen> {
                           ),
                         ],
                       ),
-
                       const Divider(height: 25),
-
                       Row(
-                        mainAxisAlignment:
-                            MainAxisAlignment.center,
+                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           IconButton(
                             onPressed: quantity > 0
-                                ? () {
-                                    updateQuantity(
+                                ? () => updateQuantity(
                                       doc.id,
                                       quantity,
                                       -1,
-                                    );
-                                  }
+                                    )
                                 : null,
                             icon: const Icon(
                               Icons.remove_circle,
                               size: 32,
                             ),
                           ),
-
                           Container(
                             width: 70,
-                            padding:
-                                const EdgeInsets.symmetric(
+                            padding: const EdgeInsets.symmetric(
                               vertical: 8,
                             ),
                             alignment: Alignment.center,
                             decoration: BoxDecoration(
-                              border: Border.all(
-                                color: Colors.grey,
-                              ),
-                              borderRadius:
-                                  BorderRadius.circular(8),
+                              border: Border.all(color: Colors.grey),
+                              borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(
-                              "$quantity",
+                              '$quantity',
                               style: const TextStyle(
                                 fontSize: 20,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
                           ),
-
                           IconButton(
-                            onPressed: () {
-                              updateQuantity(
-                                doc.id,
-                                quantity,
-                                1,
-                              );
-                            },
+                            onPressed: () => updateQuantity(
+                              doc.id,
+                              quantity,
+                              1,
+                            ),
                             icon: const Icon(
                               Icons.add_circle,
                               size: 32,
@@ -673,6 +629,27 @@ class _MedicineStockScreenState extends State<MedicineStockScreen> {
             },
           );
         },
+      ),
+    );
+  }
+
+  Widget _statusLabel(String text, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: 8,
+        vertical: 3,
+      ),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          color: color,
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+        ),
       ),
     );
   }

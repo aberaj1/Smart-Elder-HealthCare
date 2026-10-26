@@ -187,111 +187,83 @@ class _CaregiverElderLinkScreenState
       return;
     }
 
-    // Only caregiver can enter code
     if (userRole != 'caregiver') {
       showMessage('Only caregiver can link an elder.');
       return;
     }
 
     final code = linkCodeController.text.trim();
-
-    if (code.length != 6) {
+    if (!RegExp(r'^\d{6}$').hasMatch(code)) {
       showMessage('Enter a valid 6-digit link code.');
       return;
     }
 
-    setState(() {
-      isLoading = true;
-    });
+    setState(() => isLoading = true);
 
     try {
+
       final result = await FirebaseFirestore.instance
           .collection('users')
-          .where(
-            'elderLinkCode',
-            isEqualTo: code,
-          )
-          .where(
-            'role',
-            isEqualTo: 'elder',
-          )
+          .where('elderLinkCode', isEqualTo: code)
+          .where('role', isEqualTo: 'elder')
           .limit(1)
           .get();
 
-      if (result.docs.isEmpty) {
-        setState(() {
-          isLoading = false;
-        });
 
+      if (result.docs.isEmpty) {
+        if (!mounted) return;
+        setState(() => isLoading = false);
         showMessage('Invalid link code.');
         return;
       }
 
       final elderDoc = result.docs.first;
-
       final elderId = elderDoc.id;
       final elderData = elderDoc.data();
 
-      // Prevent self-link
       if (elderId == currentUser!.uid) {
-        setState(() {
-          isLoading = false;
-        });
-
+        if (!mounted) return;
+        setState(() => isLoading = false);
         showMessage('You cannot link your own account.');
         return;
       }
 
-      // Check whether elder is already linked
       final existingCaregiverId = elderData['caregiverId'];
-
       if (existingCaregiverId != null &&
           existingCaregiverId != currentUser!.uid) {
-        setState(() {
-          isLoading = false;
-        });
-
+        if (!mounted) return;
+        setState(() => isLoading = false);
         showMessage('This elder is already linked with another caregiver.');
         return;
       }
 
-      // Save elder ID inside caregiver document
       await FirebaseFirestore.instance
           .collection('users')
           .doc(currentUser!.uid)
-          .set(
-        {
-          'elderId': elderId,
-          'role': 'caregiver',
-        },
-        SetOptions(merge: true),
-      );
+          .set({
+        'elderId': elderId,
+        'role': 'caregiver',
+      }, SetOptions(merge: true));
 
-      // Save caregiver ID inside elder document
       await FirebaseFirestore.instance
           .collection('users')
           .doc(elderId)
-          .set(
-        {
-          'caregiverId': currentUser!.uid,
-        },
-        SetOptions(merge: true),
-      );
+          .set({
+        'caregiverId': currentUser!.uid,
+      }, SetOptions(merge: true));
 
+
+      if (!mounted) return;
       setState(() {
         linkedElderName = elderData['name'];
         linkedElderEmail = elderData['email'];
         isLoading = false;
       });
-
       linkCodeController.clear();
-
       showMessage('Elder linked successfully!');
     } catch (e) {
-      setState(() {
-        isLoading = false;
-      });
-
+      if (!mounted) return;
+      setState(() => isLoading = false);
       showMessage('Error linking elder: $e');
     }
   }
@@ -432,7 +404,7 @@ class _CaregiverElderLinkScreenState
             const SizedBox(height: 12),
 
             const Text(
-              'Generate this code and share it with your caregiver.',
+              'Generate this code and share it with your caretaker.',
               style: TextStyle(
                 color: Colors.grey,
               ),
@@ -698,7 +670,7 @@ class _CaregiverElderLinkScreenState
               const SizedBox(height: 10),
 
               const Text(
-                'Connect with Caregiver',
+                'Connect with Caretaker',
                 style: TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.bold,
@@ -790,7 +762,7 @@ class _CaregiverElderLinkScreenState
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Elder & Caregiver Link'),
+        title: const Text('Elder & Caretaker Link'),
       ),
       body: const Center(
         child: Text(

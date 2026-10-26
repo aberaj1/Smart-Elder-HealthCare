@@ -1,3 +1,4 @@
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -17,8 +18,13 @@ class _ElderMonitoringScreenState
   String? elderId;
   String? elderName;
   String? elderEmail;
-
   bool isLoading = true;
+
+  CollectionReference<Map<String, dynamic>> get emergencyContacts =>
+      FirebaseFirestore.instance
+          .collection('users')
+          .doc(elderId)
+          .collection('emergency_contacts');
 
   @override
   void initState() {
@@ -26,115 +32,89 @@ class _ElderMonitoringScreenState
     loadLinkedElder();
   }
 
-  // ================= LOAD LINKED ELDER =================
-
   Future<void> loadLinkedElder() async {
-    if (currentUser == null) {
-      setState(() {
-        isLoading = false;
-      });
+    final user = currentUser;
+
+    if (user == null) {
+      if (mounted) setState(() => isLoading = false);
       return;
     }
 
     try {
       final caregiverDoc = await FirebaseFirestore.instance
           .collection('users')
-          .doc(currentUser!.uid)
+          .doc(user.uid)
           .get();
 
-      if (!caregiverDoc.exists) {
-        setState(() {
-          isLoading = false;
-        });
-        return;
-      }
-
       final caregiverData = caregiverDoc.data();
+      final linkedId = caregiverData?['elderId']?.toString();
 
-      if (caregiverData == null) {
-        setState(() {
-          isLoading = false;
-        });
+      if (linkedId == null || linkedId.isEmpty) {
+        if (mounted) setState(() => isLoading = false);
         return;
       }
-
-      final id = caregiverData['elderId'];
-
-      if (id == null || id.toString().isEmpty) {
-        setState(() {
-          isLoading = false;
-        });
-        return;
-      }
-
-      elderId = id.toString();
 
       final elderDoc = await FirebaseFirestore.instance
           .collection('users')
-          .doc(elderId)
+          .doc(linkedId)
           .get();
 
-      if (elderDoc.exists) {
-        final data = elderDoc.data();
+      final data = elderDoc.data();
 
-        if (data != null) {
-          setState(() {
-            elderName = data['name']?.toString() ?? 'Elder';
-            elderEmail = data['email']?.toString() ?? '';
-            isLoading = false;
-          });
-
-          return;
-        }
-      }
+      if (!mounted) return;
 
       setState(() {
+        elderId = linkedId;
+        elderName = data?['name']?.toString() ?? 'Elder';
+        elderEmail = data?['email']?.toString() ?? '';
         isLoading = false;
       });
     } catch (e) {
-      setState(() {
-        isLoading = false;
-      });
-
-      showMessage('Unable to load elder details.');
+      if (!mounted) return;
+      setState(() => isLoading = false);
+      showMessage('Unable to load linked elder details.');
     }
   }
-
-  // ================= MESSAGE =================
 
   void showMessage(String message) {
     if (!mounted) return;
 
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
+      SnackBar(content: Text(message)),
+    );
+  }
+
+  Widget sectionTitle(String title, IconData icon) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 20, bottom: 10),
+      child: Row(
+        children: [
+          Icon(icon, color: Colors.blue),
+          const SizedBox(width: 8),
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  // ================= EMPTY CARD =================
-
-  Widget emptyCard(
-    String message,
-    IconData icon,
-  ) {
+  Widget emptyCard(String message, IconData icon) {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(18),
+        padding: const EdgeInsets.all(16),
         child: Row(
           children: [
-            Icon(
-              icon,
-              color: Colors.grey,
-              size: 30,
-            ),
+            Icon(icon, color: Colors.grey, size: 28),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
                 message,
-                style: const TextStyle(
-                  color: Colors.grey,
-                ),
+                style: const TextStyle(color: Colors.grey),
               ),
             ),
           ],
@@ -143,50 +123,39 @@ class _ElderMonitoringScreenState
     );
   }
 
-  // ================= ELDER PROFILE =================
-
   Widget buildElderProfile() {
     return Card(
-      elevation: 3,
+      elevation: 2,
       color: Colors.blue.shade50,
       child: Padding(
         padding: const EdgeInsets.all(18),
         child: Row(
           children: [
             const CircleAvatar(
-              radius: 32,
-              child: Icon(
-                Icons.person,
-                size: 35,
-              ),
+              radius: 30,
+              child: Icon(Icons.person, size: 32),
             ),
-            const SizedBox(width: 15),
+            const SizedBox(width: 14),
             Expanded(
               child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
                     'Linked Elder',
-                    style: TextStyle(
-                      color: Colors.grey,
-                    ),
+                    style: TextStyle(color: Colors.grey),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     elderName ?? 'Elder',
                     style: const TextStyle(
-                      fontSize: 21,
+                      fontSize: 20,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  if (elderEmail != null &&
-                      elderEmail!.isNotEmpty)
+                  if (elderEmail?.isNotEmpty == true)
                     Text(
                       elderEmail!,
-                      style: const TextStyle(
-                        color: Colors.grey,
-                      ),
+                      style: const TextStyle(color: Colors.grey),
                     ),
                 ],
               ),
@@ -197,24 +166,25 @@ class _ElderMonitoringScreenState
     );
   }
 
-  // ================= MEDICINE REMINDERS =================
+  Color reminderStatusColor(String status) {
+    switch (status.toLowerCase()) {
+      case 'taken':
+        return Colors.green;
+      case 'missed':
+        return Colors.red;
+      default:
+        return Colors.orange;
+    }
+  }
 
   Widget buildMedicineReminders() {
-    return StreamBuilder<QuerySnapshot>(
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
       stream: FirebaseFirestore.instance
           .collection('users')
           .doc(elderId)
           .collection('medicine_reminders')
-          .orderBy('time')
           .snapshots(),
       builder: (context, snapshot) {
-        if (snapshot.connectionState ==
-            ConnectionState.waiting) {
-          return const Center(
-            child: CircularProgressIndicator(),
-          );
-        }
-
         if (snapshot.hasError) {
           return emptyCard(
             'Unable to load medicine reminders.',
@@ -222,7 +192,16 @@ class _ElderMonitoringScreenState
           );
         }
 
-        final docs = snapshot.data?.docs ?? [];
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final docs = snapshot.data!.docs.toList();
+
+        docs.sort((a, b) =>
+            (a.data()['time'] ?? '').toString().compareTo(
+                  (b.data()['time'] ?? '').toString(),
+                ));
 
         if (docs.isEmpty) {
           return emptyCard(
@@ -233,42 +212,43 @@ class _ElderMonitoringScreenState
 
         return Column(
           children: docs.map((doc) {
-            final data =
-                doc.data() as Map<String, dynamic>;
-
-            final medicine =
-                data['medicine']?.toString() ?? 'Medicine';
-
-            final strength =
-                data['strength']?.toString() ?? '';
-
-            final time =
-                data['time']?.toString() ?? '';
+            final data = doc.data();
+            final medicine = data['medicine']?.toString() ?? 'Medicine';
+            final strength = data['strength']?.toString() ?? '';
+            final time = data['time']?.toString() ?? '';
+            final status = data['status']?.toString() ?? 'Pending';
+            final color = reminderStatusColor(status);
 
             return Card(
+              margin: const EdgeInsets.only(bottom: 10),
               child: ListTile(
                 leading: const CircleAvatar(
-                  child: Icon(
-                    Icons.medication,
-                  ),
+                  child: Icon(Icons.medication),
                 ),
                 title: Text(
                   medicine,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
                 subtitle: Text(
-                  strength.isEmpty
-                      ? 'Medicine reminder'
-                      : strength,
+                  [
+                    if (strength.isNotEmpty) strength,
+                    'Status: $status',
+                  ].join('\n'),
                 ),
-                trailing: Text(
-                  time,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                  ),
+                isThreeLine: true,
+                trailing: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.access_time, color: Colors.blue),
+                    const SizedBox(height: 4),
+                    Text(time.isEmpty ? '--:--' : time),
+                  ],
                 ),
+                titleTextStyle: const TextStyle(
+                  color: Colors.black87,
+                  fontSize: 16,
+                ),
+                iconColor: color,
               ),
             );
           }).toList(),
@@ -277,24 +257,32 @@ class _ElderMonitoringScreenState
     );
   }
 
-  // ================= MEDICINE STOCK =================
+  String formatExpiryDate(dynamic value) {
+    DateTime? date;
+
+    if (value is Timestamp) {
+      date = value.toDate();
+    } else if (value is DateTime) {
+      date = value;
+    } else if (value is String) {
+      date = DateTime.tryParse(value);
+    }
+
+    if (date == null) return 'Expiry date not available';
+
+    return '${date.day.toString().padLeft(2, '0')}/'
+        '${date.month.toString().padLeft(2, '0')}/'
+        '${date.year}';
+  }
 
   Widget buildMedicineStock() {
-    return StreamBuilder<QuerySnapshot>(
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
       stream: FirebaseFirestore.instance
           .collection('users')
           .doc(elderId)
           .collection('medicine_stock')
-          .orderBy('medicineName')
           .snapshots(),
       builder: (context, snapshot) {
-        if (snapshot.connectionState ==
-            ConnectionState.waiting) {
-          return const Center(
-            child: CircularProgressIndicator(),
-          );
-        }
-
         if (snapshot.hasError) {
           return emptyCard(
             'Unable to load medicine stock.',
@@ -302,7 +290,11 @@ class _ElderMonitoringScreenState
           );
         }
 
-        final docs = snapshot.data?.docs ?? [];
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final docs = snapshot.data!.docs;
 
         if (docs.isEmpty) {
           return emptyCard(
@@ -313,65 +305,39 @@ class _ElderMonitoringScreenState
 
         return Column(
           children: docs.map((doc) {
-            final data =
-                doc.data() as Map<String, dynamic>;
-
-            final medicine =
-                data['medicineName']?.toString() ??
-                    'Medicine';
-
+            final data = doc.data();
+            final medicine = data['medicineName']?.toString() ?? 'Medicine';
             final quantity =
-                data['quantity'] ?? 0;
-
-            final expiryDate =
-                data['expiryDate']?.toString() ?? '';
-
-            final int qty =
-                int.tryParse(quantity.toString()) ?? 0;
-
-            final bool lowStock = qty <= 5;
+                int.tryParse('${data['quantity'] ?? 0}') ?? 0;
+            final lowStock = quantity <= 5;
 
             return Card(
               child: ListTile(
                 leading: CircleAvatar(
                   backgroundColor:
-                      lowStock
-                          ? Colors.orange.shade100
-                          : Colors.green.shade100,
+                      lowStock ? Colors.orange.shade100 : Colors.green.shade100,
                   child: Icon(
                     Icons.inventory_2,
-                    color:
-                        lowStock
-                            ? Colors.orange
-                            : Colors.green,
+                    color: lowStock ? Colors.orange : Colors.green,
                   ),
                 ),
                 title: Text(
                   medicine,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
                 subtitle: Text(
-                  expiryDate.isEmpty
-                      ? 'Expiry date not available'
-                      : 'Expiry: $expiryDate',
+                  'Expiry: ${formatExpiryDate(data['expiryDate'])}',
                 ),
                 trailing: Column(
-                  mainAxisAlignment:
-                      MainAxisAlignment.center,
-                  crossAxisAlignment:
-                      CrossAxisAlignment.end,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(
-                      '$qty',
+                      '$quantity',
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
-                        color:
-                            lowStock
-                                ? Colors.orange
-                                : Colors.green,
+                        color: lowStock ? Colors.orange : Colors.green,
                       ),
                     ),
                     if (lowStock)
@@ -392,24 +358,14 @@ class _ElderMonitoringScreenState
     );
   }
 
-  // ================= APPOINTMENTS =================
-
   Widget buildAppointments() {
-    return StreamBuilder<QuerySnapshot>(
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
       stream: FirebaseFirestore.instance
           .collection('users')
           .doc(elderId)
           .collection('appointments')
-          .orderBy('date')
           .snapshots(),
       builder: (context, snapshot) {
-        if (snapshot.connectionState ==
-            ConnectionState.waiting) {
-          return const Center(
-            child: CircularProgressIndicator(),
-          );
-        }
-
         if (snapshot.hasError) {
           return emptyCard(
             'Unable to load appointments.',
@@ -417,7 +373,25 @@ class _ElderMonitoringScreenState
           );
         }
 
-        final docs = snapshot.data?.docs ?? [];
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final docs = snapshot.data!.docs.toList();
+
+        docs.sort((a, b) {
+          final aDate = a.data()['date'];
+          final bDate = b.data()['date'];
+
+          final aTime = aDate is Timestamp
+              ? aDate.toDate()
+              : DateTime.tryParse('$aDate') ?? DateTime(2100);
+          final bTime = bDate is Timestamp
+              ? bDate.toDate()
+              : DateTime.tryParse('$bDate') ?? DateTime(2100);
+
+          return aTime.compareTo(bTime);
+        });
 
         if (docs.isEmpty) {
           return emptyCard(
@@ -428,56 +402,39 @@ class _ElderMonitoringScreenState
 
         return Column(
           children: docs.map((doc) {
-            final data =
-                doc.data() as Map<String, dynamic>;
-
-            final doctor =
-                data['doctor']?.toString() ??
-                    'Doctor';
-
+            final data = doc.data();
+            final doctor = data['doctor']?.toString() ?? 'Doctor';
             final specialization =
-                data['specialization']?.toString() ??
-                    '';
-
-            final date =
-                data['date'];
-
-            final time =
-                data['time']?.toString() ?? '';
+                data['specialization']?.toString() ?? '';
+            final time = data['time']?.toString() ?? '';
+            final date = data['date'];
 
             String dateText = '';
 
             if (date is Timestamp) {
               final d = date.toDate();
-
               dateText =
                   '${d.day.toString().padLeft(2, '0')}/'
                   '${d.month.toString().padLeft(2, '0')}/'
                   '${d.year}';
+            } else if (date is String) {
+              dateText = date;
             }
 
             return Card(
               child: ListTile(
                 leading: const CircleAvatar(
-                  child: Icon(
-                    Icons.local_hospital,
-                  ),
+                  child: Icon(Icons.local_hospital),
                 ),
                 title: Text(
                   doctor,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
-                subtitle: Text(
-                  '$specialization\n$dateText',
-                ),
+                subtitle: Text('$specialization\n$dateText'),
                 isThreeLine: true,
                 trailing: Text(
                   time,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
               ),
             );
@@ -487,29 +444,30 @@ class _ElderMonitoringScreenState
     );
   }
 
-  // ================= EMERGENCY CONTACT =================
-
+  // FIXED: Listen to the same emergency_contacts collection used by
+  // EmergencyScreen. Prefer the "primary" document and fall back to
+  // existing contacts created with auto-generated document IDs.
   Widget buildEmergencyContact() {
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('users')
-          .doc(elderId)
-          .collection('emergency_contacts')
-          .limit(1)
-          .snapshots(),
+    if (elderId == null || elderId!.isEmpty) {
+      return emptyCard(
+        'No linked elder found.',
+        Icons.contact_phone,
+      );
+    }
+
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: emergencyContacts.snapshots(),
       builder: (context, snapshot) {
-        if (snapshot.connectionState ==
-            ConnectionState.waiting) {
-          return const Center(
-            child: CircularProgressIndicator(),
+        if (snapshot.hasError) {
+          return emptyCard(
+            'Unable to load emergency contact. Check Firestore rules.',
+            Icons.error_outline,
           );
         }
 
-        if (snapshot.hasError) {
-          return emptyCard(
-            'Unable to load emergency contact.',
-            Icons.error_outline,
-          );
+        if (snapshot.connectionState == ConnectionState.waiting &&
+            !snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
         }
 
         final docs = snapshot.data?.docs ?? [];
@@ -521,104 +479,62 @@ class _ElderMonitoringScreenState
           );
         }
 
-        final data =
-            docs.first.data()
-                as Map<String, dynamic>;
+        // Use the fixed "primary" contact when available.
+        // Otherwise display an older contact saved with an auto-ID.
+        final primaryDocs =
+            docs.where((doc) => doc.id == 'primary').toList();
 
-        final name =
-            data['name']?.toString() ??
-                'Emergency Contact';
+        final selectedDoc =
+            primaryDocs.isNotEmpty ? primaryDocs.first : docs.first;
 
-        final phone =
-            data['phone']?.toString() ?? '';
+        final data = selectedDoc.data();
+        final name = data['name']?.toString() ?? 'Emergency Contact';
+        final phone = data['phone']?.toString() ?? '';
 
         return Card(
+          elevation: 2,
           child: ListTile(
             leading: const CircleAvatar(
               backgroundColor: Colors.red,
-              child: Icon(
-                Icons.emergency,
-                color: Colors.white,
-              ),
+              child: Icon(Icons.emergency, color: Colors.white),
             ),
             title: Text(
               name,
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
-              ),
+              style: const TextStyle(fontWeight: FontWeight.bold),
             ),
-            subtitle: Text(phone),
+            subtitle: Text(
+              phone.isEmpty ? 'Phone number not available' : phone,
+            ),
+            trailing: const Icon(
+              Icons.check_circle,
+              color: Colors.green,
+            ),
           ),
         );
       },
     );
   }
 
-  // ================= SECTION TITLE =================
-
-  Widget sectionTitle(
-    String title,
-    IconData icon,
-  ) {
-    return Padding(
-      padding: const EdgeInsets.only(
-        top: 20,
-        bottom: 10,
-      ),
-      child: Row(
-        children: [
-          Icon(
-            icon,
-            color: Colors.blue,
-          ),
-          const SizedBox(width: 8),
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ================= BUILD =================
-
   @override
   Widget build(BuildContext context) {
     if (currentUser == null) {
       return Scaffold(
-        appBar: AppBar(
-          title: const Text('Elder Monitoring'),
-        ),
-        body: const Center(
-          child: Text('Please login first.'),
-        ),
+        appBar: AppBar(title: const Text('Elder Monitoring')),
+        body: const Center(child: Text('Please login first.')),
       );
     }
 
     if (isLoading) {
       return Scaffold(
-        appBar: AppBar(
-          title: const Text('Elder Monitoring'),
-        ),
-        body: const Center(
-          child: CircularProgressIndicator(),
-        ),
+        appBar: AppBar(title: const Text('Elder Monitoring')),
+        body: const Center(child: CircularProgressIndicator()),
       );
     }
 
     if (elderId == null) {
       return Scaffold(
         appBar: AppBar(
-          title: const Text(
-            'Elder Monitoring',
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-            ),
-          ),
+          title: const Text('Elder Monitoring'),
           backgroundColor: Colors.blue,
           foregroundColor: Colors.white,
         ),
@@ -626,8 +542,7 @@ class _ElderMonitoringScreenState
           child: Padding(
             padding: const EdgeInsets.all(25),
             child: Column(
-              mainAxisAlignment:
-                  MainAxisAlignment.center,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 const Icon(
                   Icons.person_search,
@@ -646,16 +561,11 @@ class _ElderMonitoringScreenState
                 const Text(
                   'Please link an elder using the Elder Link Code.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.grey,
-                    fontSize: 16,
-                  ),
+                  style: TextStyle(color: Colors.grey, fontSize: 16),
                 ),
                 const SizedBox(height: 25),
                 ElevatedButton.icon(
-                  onPressed: () {
-                    Navigator.pop(context);
-                  },
+                  onPressed: () => Navigator.pop(context),
                   icon: const Icon(Icons.arrow_back),
                   label: const Text('Go Back'),
                 ),
@@ -670,9 +580,7 @@ class _ElderMonitoringScreenState
       appBar: AppBar(
         title: const Text(
           'Elder Monitoring',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-          ),
+          style: TextStyle(fontWeight: FontWeight.bold),
         ),
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
@@ -680,33 +588,20 @@ class _ElderMonitoringScreenState
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             buildElderProfile(),
 
-            sectionTitle(
-              'Medicine Reminders',
-              Icons.medication,
-            ),
+            sectionTitle('Medicine Reminders', Icons.medication),
             buildMedicineReminders(),
 
-            sectionTitle(
-              'Medicine Stock',
-              Icons.inventory_2,
-            ),
+            sectionTitle('Medicine Stock', Icons.inventory_2),
             buildMedicineStock(),
 
-            sectionTitle(
-              'Doctor Appointments',
-              Icons.calendar_month,
-            ),
+            sectionTitle('Doctor Appointments', Icons.calendar_month),
             buildAppointments(),
 
-            sectionTitle(
-              'Emergency Contact',
-              Icons.emergency,
-            ),
+            sectionTitle('Emergency Contact', Icons.emergency),
             buildEmergencyContact(),
 
             const SizedBox(height: 30),

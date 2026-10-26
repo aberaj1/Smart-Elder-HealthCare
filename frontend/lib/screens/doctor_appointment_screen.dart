@@ -1,6 +1,8 @@
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import '../services/healthcare_owner_service.dart';
 
 class DoctorAppointmentScreen extends StatefulWidget {
   const DoctorAppointmentScreen({super.key});
@@ -22,13 +24,46 @@ class _DoctorAppointmentScreenState
   TimeOfDay? selectedTime;
   bool isSaving = false;
 
+  String? dataOwnerUid;
+  String? ownerError;
+  bool isLoadingOwner = true;
+
   User? get currentUser => FirebaseAuth.instance.currentUser;
 
-  CollectionReference<Map<String, dynamic>> get appointmentCollection {
+  CollectionReference<Map<String, dynamic>>
+      get appointmentCollection {
     return FirebaseFirestore.instance
         .collection('users')
-        .doc(currentUser!.uid)
+        .doc(dataOwnerUid!)
         .collection('appointments');
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    loadDataOwner();
+  }
+
+  Future<void> loadDataOwner() async {
+    try {
+      final uid =
+          await HealthcareOwnerService.getDataOwnerUid();
+
+      if (!mounted) return;
+
+      setState(() {
+        dataOwnerUid = uid;
+        isLoadingOwner = false;
+        ownerError = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        ownerError = e.toString().replaceFirst('Exception: ', '');
+        isLoadingOwner = false;
+      });
+    }
   }
 
   @override
@@ -41,12 +76,12 @@ class _DoctorAppointmentScreenState
   Future<void> selectDate() async {
     final DateTime? date = await showDatePicker(
       context: context,
-      initialDate: DateTime.now(),
+      initialDate: selectedDate ?? DateTime.now(),
       firstDate: DateTime.now(),
       lastDate: DateTime(2035),
     );
 
-    if (date != null) {
+    if (date != null && mounted) {
       setState(() {
         selectedDate = date;
       });
@@ -59,7 +94,7 @@ class _DoctorAppointmentScreenState
       initialTime: TimeOfDay.now(),
     );
 
-    if (time != null) {
+    if (time != null && mounted) {
       setState(() {
         selectedTime = time;
       });
@@ -84,6 +119,13 @@ class _DoctorAppointmentScreenState
       return;
     }
 
+    if (dataOwnerUid == null) {
+      showMessage(
+        ownerError ?? 'Please wait. Loading account details.',
+      );
+      return;
+    }
+
     setState(() {
       isSaving = true;
     });
@@ -96,9 +138,16 @@ class _DoctorAppointmentScreenState
         'timeHour': selectedTime!.hour,
         'timeMinute': selectedTime!.minute,
         'time': selectedTime!.format(context),
-        'userId': currentUser!.uid,
+
+        // Elder account that owns this appointment.
+        'userId': dataOwnerUid,
+
+        // Account that created the appointment.
+        'createdByUid': currentUser!.uid,
         'createdAt': FieldValue.serverTimestamp(),
       });
+
+      if (!mounted) return;
 
       doctorController.clear();
       specializationController.clear();
@@ -111,6 +160,8 @@ class _DoctorAppointmentScreenState
 
       showMessage('Appointment added successfully!');
     } catch (e) {
+      if (!mounted) return;
+
       setState(() {
         isSaving = false;
       });
@@ -120,12 +171,16 @@ class _DoctorAppointmentScreenState
   }
 
   Future<void> deleteAppointment(String documentId) async {
+    if (dataOwnerUid == null) {
+      showMessage('Account details are not loaded.');
+      return;
+    }
+
     try {
       await appointmentCollection.doc(documentId).delete();
-
       showMessage('Appointment deleted');
     } catch (e) {
-      showMessage('Unable to delete appointment');
+      showMessage('Unable to delete appointment: $e');
     }
   }
 
@@ -145,9 +200,7 @@ class _DoctorAppointmentScreenState
     if (!mounted) return;
 
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-      ),
+      SnackBar(content: Text(message)),
     );
   }
 
@@ -164,18 +217,69 @@ class _DoctorAppointmentScreenState
       );
     }
 
+    if (isLoadingOwner) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Doctor Appointments'),
+          backgroundColor: Colors.green,
+          foregroundColor: Colors.white,
+        ),
+        body: const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    if (dataOwnerUid == null) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Doctor Appointments'),
+          backgroundColor: Colors.green,
+          foregroundColor: Colors.white,
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.person_outline,
+                  size: 48,
+                  color: Colors.orange,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  ownerError ?? 'Unable to load account details.',
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 12),
+                ElevatedButton(
+                  onPressed: () {
+                    setState(() {
+                      isLoadingOwner = true;
+                      ownerError = null;
+                    });
+                    loadDataOwner();
+                  },
+                  child: const Text('Retry'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text(
           'Doctor Appointments',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-          ),
+          style: TextStyle(fontWeight: FontWeight.bold),
         ),
         backgroundColor: Colors.green,
         foregroundColor: Colors.white,
       ),
-
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -188,9 +292,7 @@ class _DoctorAppointmentScreenState
                 fontWeight: FontWeight.bold,
               ),
             ),
-
             const SizedBox(height: 20),
-
             TextField(
               controller: doctorController,
               decoration: const InputDecoration(
@@ -200,9 +302,7 @@ class _DoctorAppointmentScreenState
                 prefixIcon: Icon(Icons.person),
               ),
             ),
-
             const SizedBox(height: 15),
-
             TextField(
               controller: specializationController,
               decoration: const InputDecoration(
@@ -212,9 +312,7 @@ class _DoctorAppointmentScreenState
                 prefixIcon: Icon(Icons.local_hospital),
               ),
             ),
-
             const SizedBox(height: 15),
-
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
@@ -229,9 +327,7 @@ class _DoctorAppointmentScreenState
                 ),
               ),
             ),
-
             const SizedBox(height: 12),
-
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
@@ -244,9 +340,7 @@ class _DoctorAppointmentScreenState
                 ),
               ),
             ),
-
             const SizedBox(height: 20),
-
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
@@ -261,32 +355,22 @@ class _DoctorAppointmentScreenState
                       )
                     : const Icon(Icons.add),
                 label: Text(
-                  isSaving
-                      ? 'Saving...'
-                      : 'Add Appointment',
+                  isSaving ? 'Saving...' : 'Add Appointment',
                 ),
               ),
             ),
-
             const SizedBox(height: 30),
-
             const Text(
-              'My Appointments',
+              'Appointments',
               style: TextStyle(
                 fontSize: 22,
                 fontWeight: FontWeight.bold,
               ),
             ),
-
             const SizedBox(height: 15),
-
-            StreamBuilder<
-                QuerySnapshot<Map<String, dynamic>>>(
+            StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
               stream: appointmentCollection
-                  .orderBy(
-                    'date',
-                    descending: false,
-                  )
+                  .orderBy('date')
                   .snapshots(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState ==
@@ -308,8 +392,7 @@ class _DoctorAppointmentScreenState
                   );
                 }
 
-                final documents =
-                    snapshot.data?.docs ?? [];
+                final documents = snapshot.data?.docs ?? [];
 
                 if (documents.isEmpty) {
                   return const Card(
@@ -319,9 +402,7 @@ class _DoctorAppointmentScreenState
                         color: Colors.green,
                         size: 35,
                       ),
-                      title: Text(
-                        'No appointments added',
-                      ),
+                      title: Text('No appointments added'),
                       subtitle: Text(
                         'Add your doctor appointment above',
                       ),
@@ -331,8 +412,7 @@ class _DoctorAppointmentScreenState
 
                 return ListView.builder(
                   shrinkWrap: true,
-                  physics:
-                      const NeverScrollableScrollPhysics(),
+                  physics: const NeverScrollableScrollPhysics(),
                   itemCount: documents.length,
                   itemBuilder: (context, index) {
                     final doc = documents[index];
@@ -340,58 +420,44 @@ class _DoctorAppointmentScreenState
 
                     final doctor =
                         data['doctor'] ?? 'Unknown Doctor';
-
                     final specialization =
                         data['specialization'] ?? '';
-
-                    final date =
-                        data['date'] as Timestamp?;
-
-                    final time =
-                        data['time'] ?? 'No time';
+                    final date = data['date'] as Timestamp?;
+                    final time = data['time'] ?? 'No time';
 
                     return Card(
                       elevation: 3,
-                      margin:
-                          const EdgeInsets.only(bottom: 12),
+                      margin: const EdgeInsets.only(bottom: 12),
                       child: ListTile(
-                        contentPadding:
-                            const EdgeInsets.all(12),
-
+                        contentPadding: const EdgeInsets.all(12),
                         leading: const Icon(
                           Icons.local_hospital,
                           color: Colors.green,
                           size: 40,
                         ),
-
                         title: Text(
-                          doctor,
+                          doctor.toString(),
                           style: const TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
-
                         subtitle: Padding(
-                          padding:
-                              const EdgeInsets.only(top: 6),
+                          padding: const EdgeInsets.only(top: 6),
                           child: Text(
                             '$specialization\n'
                             'Date: ${formatDate(date)}\n'
                             'Time: $time',
                           ),
                         ),
-
                         isThreeLine: true,
-
                         trailing: IconButton(
                           icon: const Icon(
                             Icons.delete,
                             color: Colors.red,
                           ),
-                          onPressed: () {
-                            deleteAppointment(doc.id);
-                          },
+                          onPressed: () =>
+                              deleteAppointment(doc.id),
                         ),
                       ),
                     );
